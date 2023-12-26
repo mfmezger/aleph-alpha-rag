@@ -1,0 +1,75 @@
+[tool.poetry]
+name = "aleph_alpha_rag"
+version = "0.0.1"
+description = "Aleph Alpha Retrieval Augmented Generation"
+authors = ["Marc Mezger <marc.mezger@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+langchain = "^0.0.352"
+streamlit = "^1.29.0"
+loguru = "^0.7.2"
+omegaconf = "^2.3.0"
+aleph-alpha-client = "^5.0.0"
+python-dotenv = "^1.0.0"
+httpx = "^0.26.0"
+python-multipart = "^0.0.6"
+fastapi = "^0.106.0"
+grpcio = "^1.60.0"
+grpcio-tools = "^1.60.0" # for qdrant
+qdrant-client = "^1.7.0" # for qdrant
+uvicorn = "^0.25.0"
+nltk = "^3.8.1"
+pypdfium2 = "^4.25.0"
+lingua-language-detector = "^2.0.2"
+pyarrow = "^14.0.2" # security issue with < 14.0.1
+aiohttp = "^3.9.1" # security issue
+
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.4.1"
+pytest = "^7.4.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.settings]
+known_third_party = ["aleph_alpha_client", "dotenv", "fastapi", "langchain", "langchain_core", "lingua", "loguru", "nltk", "numpy", "omegaconf", "pydantic", "pytest", "qdrant_client", "requests", "starlette", "streamlit", "tqdm", "utility"]
+
+[tool.mypy]
+# Disallow dynamic typing
+disallow_any_unimported=true
+disallow_any_expr = true
+disallow_any_decorated = true
+disallow_any_generics = true
+disallow_any_explicit = true
+disallow_subclassing_any = true
+
+# Disallow untyped definitions and calls
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+
+# None and optional handling
+no_implicit_optional = true
+
+# Configuring warnings
+warn_unused_ignores = true
+warn_no_return = true
+warn_return_any = true
+warn_redundant_casts = true
+
+# Misc things
+strict_equality = true
+
+# Config file
+warn_unused_configs = true
+
+[tool.ruff]
+line-length = 170
+[tool.pylint]
+max-line-length = 170

@@ -1,0 +1,12 @@
+qdrant:
+  url: http://qdrant
+  # url: http://localhost
+  port: 6333
+  prefer_grpc: false
+  collection_name_aa: aleph_alpha
+
+aleph_alpha_embeddings:
+  normalize: True
+  size: 5120
+  compress_to_size: null
+  model_name: "luminous-base"
