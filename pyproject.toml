@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aleph_alpha_rag"
-version = "0.0.2"
+version = "1.0.0"
 description = "Aleph Alpha Retrieval Augmented Generation"
 authors = ["Marc Mezger <marc.mezger@gmail.com>"]
 readme = "README.md"
