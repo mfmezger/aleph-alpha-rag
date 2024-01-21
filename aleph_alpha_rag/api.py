@@ -62,7 +62,6 @@ app.openapi = my_schema  # type: ignore
 load_dotenv()
 
 # load the token from the environment variables, is None if not set.
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 ALEPH_ALPHA_API_KEY = os.environ.get("ALEPH_ALPHA_API_KEY")
 logger.info("Loading REST API Finished.")
 
@@ -75,32 +74,6 @@ def read_root() -> str:
         str: The welcome message.
     """
     return "Welcome to the Simple Aleph Alpha FastAPI Backend!"
-
-
-def embedd_documents_wrapper(
-    folder_name: str,
-    token: Optional[str] = None,
-    collection_name: Optional[str] = None,
-) -> None:
-    """Call the right embedding function for the chosen backend.
-
-    Args:
-        folder_name (str): Name of the temporary folder.
-        llm_backend (str, optional): LLM provider. Defaults to "openai".
-        token (str, optional): Token for the LLM Provider of choice. Defaults to None.
-
-    Raises:
-        ValueError: If an invalid LLM Provider is set.
-    """
-    token = get_token(
-        token=token,
-        aleph_alpha_key=ALEPH_ALPHA_API_KEY,
-    )
-
-    # Embedd the documents with Aleph Alpha
-    logger.debug("Embedding Documents with Aleph Alpha.")
-    aa_service = AlephAlphaService(token=token, collection_name=collection_name)
-    aa_service.embedd_documents(dir=folder_name, aleph_alpha_token=token, collection_name=collection_name)
 
 
 @app.post("/collection/create/{collection_name}/{embeddings_size}")
@@ -154,11 +127,10 @@ async def post_embedd_documents(
         with open(os.path.join(tmp_dir, file_name), "wb") as f:
             f.write(await file.read())
 
-    embedd_documents_wrapper(
-        folder_name=tmp_dir,
-        token=token,
-        collection_name=collection_name,
-    )
+    # Embedd the documents with Aleph Alpha
+    logger.debug("Embedding Documents with Aleph Alpha.")
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=collection_name)
+    aa_service.embedd_documents(dir=tmp_dir)
 
     return EmbeddingResponse(status="success", files=file_names)
 
@@ -200,7 +172,7 @@ async def post_embedd_text_files(request: EmbeddTextFilesRequest) -> EmbeddingRe
         aleph_alpha_key=ALEPH_ALPHA_API_KEY,
     )
 
-    aa_service = AlephAlphaService(token=token, collection_name=request.collection_name)
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.collection_name)
     aa_service.embedd_text_files(folder=tmp_dir, aleph_alpha_token=token, seperator=request.seperator)
 
     return EmbeddingResponse(status="success", files=file_names)
@@ -231,7 +203,7 @@ def post_question_answer(request: QARequest) -> QAResponse:
         openai_key=OPENAI_API_KEY,
     )
 
-    aa_service = AlephAlphaService(token=token, collection_name=request.collection_name)
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.collection_name)
 
     # if the history flag is activated and the history is not provided, raise an error
     if request.history and request.history_list is None:
@@ -283,7 +255,7 @@ def post_explain_question_answer(request: ExplainQARequest) -> ExplainQAResponse
         token=request.qa.search.token,
         aleph_alpha_key=ALEPH_ALPHA_API_KEY,
     )
-    aa_service = AlephAlphaService(token=token, collection_name=request.qa.search.collection_name)
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.qa.search.collection_name)
 
     documents = search_database(request.qa.search)
 

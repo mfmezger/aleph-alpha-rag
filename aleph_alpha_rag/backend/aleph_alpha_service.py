@@ -17,9 +17,8 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from loguru import logger
 from omegaconf import DictConfig
+from ultra_simple_config import load_config
 
-from aleph_alpha_rag.utils.configuration import load_config
-from aleph_alpha_rag.utils.tokenizing import count_tokens, get_tokenizer
 from aleph_alpha_rag.utils.utility import generate_prompt
 from aleph_alpha_rag.utils.vdb import get_db_connection
 
@@ -28,6 +27,26 @@ load_dotenv()
 
 aleph_alpha_token = os.getenv("ALEPH_ALPHA_API_KEY")
 tokenizer = None
+
+
+def get_tokenizer():
+    """Initialize the tokenizer."""
+    global tokenizer
+    client = Client(token=aleph_alpha_token)
+    tokenizer = client.tokenizer("luminous-base")
+
+
+def count_tokens(text: str):
+    """Count the number of tokens in the text.
+
+    Args:
+        text (str): The text to count the tokens for.
+
+    Returns:
+        int: Number of tokens.
+    """
+    tokens = tokenizer.encode(text)
+    return len(tokens)
 
 
 class AlephAlphaService:
@@ -66,11 +85,11 @@ class AlephAlphaService:
 
         request = CompletionRequest(
             prompt=Prompt.from_text(text),
-            maximum_tokens=self.aleph_alpha_completion.max_tokens,
-            stop_sequences=[self.aleph_alpha_completion.stop_sequences],
-            repetition_penalties_include_completion=self.aleph_alpha_completion.repetition_penalties_include_completion,
+            maximum_tokens=self.cfg.aleph_alpha_completion.max_tokens,
+            stop_sequences=[self.cfg.aleph_alpha_completion.stop_sequences],
+            repetition_penalties_include_completion=self.cfg.aleph_alpha_completion.repetition_penalties_include_completion,
         )
-        response = client.complete(request, model=self.aleph_alpha_completion.model)
+        response = client.complete(request, model=self.cfg.aleph_alpha_completion.model)
 
         # ensure that the response is not empty
         if not response.completions:
@@ -85,7 +104,6 @@ class AlephAlphaService:
     def embedd_documents(
         self,
         dir: str,
-        aleph_alpha_token: str,
     ) -> None:
         """Embeds the documents in the given directory in the Aleph Alpha database.
 
@@ -102,9 +120,9 @@ class AlephAlphaService:
         vector_db: Qdrant = get_db_connection(collection_name=self.collection_name, aleph_alpha_token=self.aleph_alpha_token)
 
         loader = DirectoryLoader(dir, glob="*.pdf", loader_cls=PyPDFium2Loader)
-        get_tokenizer()
+        get_tokenizer(self.aleph_alpha_token)
 
-        splitter = NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)
+        splitter = NLTKTextSplitter(length_function=count_tokens(), chunk_size=300, chunk_overlap=50)
         docs = loader.load_and_split(splitter)
 
         logger.info(f"Loaded {len(docs)} documents.")
@@ -114,11 +132,7 @@ class AlephAlphaService:
 
         logger.info("SUCCESS: Texts embedded.")
 
-    def embedd_text_files(
-        self,
-        folder: str,
-        seperator: str,
-    ) -> None:
+    def embedd_text_files(self, folder: str, seperator: str) -> None:
         """Embeds text files in the Aleph Alpha database.
 
         Args:
@@ -160,12 +174,7 @@ class AlephAlphaService:
 
         logger.info("SUCCESS: Text embedded.")
 
-    def search_documents_aleph_alpha(
-        self,
-        query: str,
-        amount: int = 1,
-        threshold: float = 0.0,
-    ) -> List[Tuple[LangchainDocument, float]]:
+    def search_documents_aleph_alpha(self, query: str, amount: int = 1, threshold: float = 0.0) -> List[Tuple[LangchainDocument, float]]:
         """Searches the Aleph Alpha service for similar documents.
 
         Args:
@@ -247,13 +256,7 @@ class AlephAlphaService:
         return answer, prompt, meta_data
 
     @load_config(location="config/ai/main.yml")
-    def explain_qa(
-        self,
-        aleph_alpha_token: str,
-        document: LangchainDocument,
-        query: str,
-        cfg: DictConfig,
-    ):
+    def explain_qa(self, aleph_alpha_token: str, document: LangchainDocument, query: str) -> Tuple[str, float, str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]:
         """Explian QA WIP."""
         text = document[0][0].page_content
         meta_data = document[0][0].metadata
@@ -303,7 +306,7 @@ class AlephAlphaService:
 
         return explanation, score, text, answer, meta_data
 
-    def qa_chain(self, query: str, collection_name: str):
+    def qa_chain(self, query: str):
         """QA Chain Imp."""
         from langchain.llms import AlephAlpha
 
@@ -329,11 +332,6 @@ class AlephAlphaService:
         answer = chain.invoke(query)
 
         logger.info(answer)
-
-
-def self_question_qa():
-    """Self question QA."""
-    # TODO
 
 
 if __name__ == "__main__":

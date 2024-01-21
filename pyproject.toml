@@ -25,6 +25,7 @@ pypdfium2 = "^4.26.0"
 lingua-language-detector = "^2.0.2"
 pyarrow = "^15.0.0" # security issue with < 14.0.1
 aiohttp = "^3.9.1" # security issue
+ultra-simple-config = "^0.1.0"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -36,7 +37,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.settings]
-known_third_party = ["aleph_alpha_client", "dotenv", "fastapi", "langchain", "langchain_community", "langchain_core", "lingua", "loguru", "nltk", "numpy", "omegaconf", "pydantic", "pytest", "qdrant_client", "requests", "starlette", "streamlit", "tqdm", "utility"]
+known_third_party = ["aleph_alpha_client", "dotenv", "fastapi", "langchain", "langchain_community", "langchain_core", "lingua", "loguru", "nltk", "numpy", "omegaconf", "pydantic", "pytest", "qdrant_client", "requests", "starlette", "streamlit", "tqdm", "ultra_simple_config", "utility"]
 
 [tool.mypy]
 # Disallow dynamic typing
