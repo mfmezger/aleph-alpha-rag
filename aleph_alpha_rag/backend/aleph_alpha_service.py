@@ -2,17 +2,17 @@
 
 import os
 import pathlib
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import nltk
 import numpy as np
 from aleph_alpha_client import Client, CompletionRequest, ExplanationRequest, Prompt
 from dotenv import load_dotenv
 from langchain.docstore.document import Document as LangchainDocument
-from langchain.document_loaders import DirectoryLoader, PyPDFium2Loader
 from langchain.prompts import ChatPromptTemplate
 from langchain.text_splitter import NLTKTextSplitter
-from langchain.vectorstores import Qdrant
+from langchain_community.document_loaders import DirectoryLoader, PyPDFium2Loader
+from langchain_community.vectorstores import Qdrant
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from loguru import logger
@@ -31,8 +31,10 @@ tokenizer = None
 
 
 class AlephAlphaService:
+    """The Aleph Alpha Service. This class is used to interact with the Aleph Alpha API."""
+
     @load_config(location="config/main.yml")
-    def __init__(self, cfg: DictConfig, collection_name: str, aleph_alpha_token: str ):
+    def __init__(self, cfg: DictConfig, collection_name: str, aleph_alpha_token: str):
         """Initialize the Ollama Service."""
         self.cfg = cfg
         self.collection_name = collection_name
@@ -41,9 +43,6 @@ class AlephAlphaService:
 
         if not self.aleph_alpha_token:
             raise ValueError("Token cannot be None or empty.")
-
-
-
 
     def send_completion_request(self, text: str) -> str:
         """Sends a completion request to the Luminous API.
@@ -83,8 +82,11 @@ class AlephAlphaService:
 
         return str(response.completions[0].completion)
 
-
-    def embedd_documents(self, dir: str, aleph_alpha_token: str, ) -> None:
+    def embedd_documents(
+        self,
+        dir: str,
+        aleph_alpha_token: str,
+    ) -> None:
         """Embeds the documents in the given directory in the Aleph Alpha database.
 
         This method uses the Directory Loader for PDFs and the PyPDFium2Loader to load the documents.
@@ -111,7 +113,6 @@ class AlephAlphaService:
         vector_db.add_texts(texts=text_list, metadatas=metadata_list)
 
         logger.info("SUCCESS: Texts embedded.")
-
 
     def embedd_text_files(
         self,
@@ -159,13 +160,11 @@ class AlephAlphaService:
 
         logger.info("SUCCESS: Text embedded.")
 
-
     def search_documents_aleph_alpha(
         self,
         query: str,
         amount: int = 1,
         threshold: float = 0.0,
-
     ) -> List[Tuple[LangchainDocument, float]]:
         """Searches the Aleph Alpha service for similar documents.
 
@@ -190,7 +189,6 @@ class AlephAlphaService:
         except Exception as e:
             logger.error(f"ERROR: Failed to search documents: {e}")
             raise Exception(f"Failed to search documents: {e}") from e
-
 
     def qa_aleph_alpha(
         self,
@@ -248,14 +246,13 @@ class AlephAlphaService:
         # extract the answer
         return answer, prompt, meta_data
 
-
     @load_config(location="config/ai/main.yml")
-    def explain_qa(self,
+    def explain_qa(
+        self,
         aleph_alpha_token: str,
         document: LangchainDocument,
         query: str,
         cfg: DictConfig,
-
     ):
         """Explian QA WIP."""
         text = document[0][0].page_content
@@ -305,7 +302,6 @@ class AlephAlphaService:
         text = document[0][0].page_content
 
         return explanation, score, text, answer, meta_data
-
 
     def qa_chain(self, query: str, collection_name: str):
         """QA Chain Imp."""

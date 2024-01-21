@@ -16,7 +16,6 @@
   - [Development Frontend](#development-frontend)
   - [Vector Database](#vector-database)
   - [Qdrant API Key](#qdrant-api-key)
-  - [Star History](#star-history)
 
 
 
@@ -110,6 +109,12 @@ To run the tests you can use this command:
 poetry run coverage run -m pytest -o log_cli=true -vvv tests
 ```
 
+To update all dependencies use this command:
+
+```bash
+poetry add langchain@latest streamlit@latest loguru@latest omegaconf@latest aleph-alpha-client@latest python-dotenv@latest httpx@latest python-multipart@latest fastapi@latest grpcio@latest grpcio-tools@latest qdrant-client@latest uvicorn@latest nltk@latest pypdfium2@latest lingua-language-detector@latest pyarrow@latest aiohttp@latest
+```
+
 ## Development Frontend
 
 To run the Frontend use this command in the root directory:
@@ -128,15 +133,3 @@ Qdrant Dashboard is available at http://127.0.0.1:6333/dashboard. There you need
 To use the Qdrant API you need to set the correct parameters in the .env file.
 QDRANT_API_KEY is the API key for the Qdrant API.
 And you need to change it in the qdrant.yaml file in the config folder.
-
-
-
-## Star History
-
-<a href="https://star-history.com/#mfmezger/conversational-aleph_alpha_rag-langchain&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=mfmezger/conversational-aleph_alpha_rag-langchain&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=mfmezger/conversational-aleph_alpha_rag-langchain&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=mfmezger/conversational-aleph_alpha_rag-langchain&type=Date" />
-  </picture>
-</a>

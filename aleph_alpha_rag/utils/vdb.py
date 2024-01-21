@@ -3,8 +3,8 @@
 import os
 from typing import Optional
 
-from langchain.embeddings import AlephAlphaAsymmetricSemanticEmbedding
-from langchain.vectorstores import Qdrant
+from langchain_community.embeddings import AlephAlphaAsymmetricSemanticEmbedding
+from langchain_community.vectorstores import Qdrant
 from loguru import logger
 from omegaconf import DictConfig
 from qdrant_client import QdrantClient, models
