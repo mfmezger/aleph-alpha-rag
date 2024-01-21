@@ -10,7 +10,6 @@
   - [Semantic Search](#semantic-search)
   - [Architecture](#architecture)
   - [Components](#components)
-  - [Available LLM Backends](#available-llm-backends)
   - [Secret Management](#secret-management)
   - [Installation \& Development Backend](#installation--development-backend)
   - [Development Frontend](#development-frontend)
@@ -60,13 +59,6 @@ Semantic search is an advanced search technique that aims to understand the mean
 ## Components
 
 Langchain is a library for natural language processing and machine learning. FastAPI is a modern, fast (high-performance) web framework for building APIs with Python 3.7+ based on standard Python type hints. A Vectordatabase is a database that stores vectors, which can be used for similarity searches and other machine learning tasks.
-
-## Available LLM Backends
-
-- [Aleph Alpha Luminous](https://aleph-alpha.com/)
-- [GPT4All](https://gpt4all.io/index.html)
-- (Azure) OpenAI
-
 
 ## Secret Management
 
