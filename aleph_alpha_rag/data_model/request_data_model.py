@@ -34,8 +34,8 @@ class SearchRequest(BaseModel):
 
     query: str = Field(..., title="Query", description="The search query.")
     filtering: Filtering
-    collection_name: Optional[str] = Field(None, title="Name of the Collection", description="Name of the Qdrant Collection.")
-    amount: int = Field(1, title="Amount", description="The number of search results to return.")
+    collection_name: Optional[str] = Field("aleph_alpha", title="Name of the Collection", description="Name of the Qdrant Collection.")
+    amount: int = Field(3, title="Amount", description="The number of search results to return.")
     token: Optional[str] = Field(None, title="Token", description="The API token for the LLM provider.")
 
 

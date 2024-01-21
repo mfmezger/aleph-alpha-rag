@@ -115,6 +115,12 @@ def get_token(
     Raises:
         ValueError: If no token is provided.
     """
+    if aleph_alpha_key == "string":
+        aleph_alpha_key = None
+
+    if token == "string":
+        token = None
+
     if not aleph_alpha_key and not token:
         raise ValueError("No token provided.")
 

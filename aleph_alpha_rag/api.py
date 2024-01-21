@@ -193,21 +193,12 @@ def post_question_answer(request: QARequest) -> QAResponse:
     """
     logger.info("Answering Question")
     # if the query is not provided, raise an error
-    if request.query is None:
-        raise ValueError("Please provide a Question.")
-
     token = get_token(
-        token=request.token,
-        llm_backend=request.llm_backend,
+        token=request.search.token,
         aleph_alpha_key=ALEPH_ALPHA_API_KEY,
-        openai_key=OPENAI_API_KEY,
     )
 
-    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.collection_name)
-
-    # if the history flag is activated and the history is not provided, raise an error
-    if request.history and request.history_list is None:
-        raise ValueError("Please provide a HistoryList.")
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.search.collection_name)
 
     # summarize the history
     if request.history:
@@ -218,13 +209,17 @@ def post_question_answer(request: QARequest) -> QAResponse:
         # summary = summarize_text_aleph_alpha(text=text, token=token)
         # combine the history and the query
         summary = ""
-        request.query = f"{summary}\n{request.query}"
+        request.search.query = f"{summary}\n{request.search.query}"
 
-    documents = search_database(request.search)
+    documents = search_database(request=request.search, aa_service=aa_service)
 
     # call the qa function
 
-    answer, prompt, meta_data = aa_service.qa_aleph_alpha(query=request.query, documents=documents, aleph_alpha_token=token)
+    answer, prompt, meta_data = aa_service.qa(query=request.search.query, documents=documents)
+
+    # return_meta_data = []
+    # for m in meta_data:
+    #     return_meta_data.append(MetaData(page=m["page"], source=m["source"]))
 
     return QAResponse(answer=answer, prompt=prompt, meta_data=meta_data)
 
@@ -257,10 +252,10 @@ def post_explain_question_answer(request: ExplainQARequest) -> ExplainQAResponse
     )
     aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.qa.search.collection_name)
 
-    documents = search_database(request.qa.search)
+    documents = search_database(request.qa.search, aa_service=aa_service)
 
     # call the qa function
-    explanation, score, text, answer, meta_data = aa_service.explain_qa(query=request.qa.search.query, document=documents, aleph_alpha_token=token)
+    explanation, score, text, answer, meta_data = aa_service.explain_qa(query=request.qa.search.query, document=documents)
 
     return ExplainQAResponse(
         explanation=explanation,
@@ -286,14 +281,13 @@ def post_search(request: SearchRequest) -> List[SearchResponse]:
     """
     logger.info("Searching for Documents")
     request.token = get_token(
-        token=request.llm_backend.token,
+        token=request.token,
         aleph_alpha_key=ALEPH_ALPHA_API_KEY,
     )
 
-    if request.llm_backend is None:
-        raise ValueError("Please provide a LLM Provider of choice.")
+    aa_service = AlephAlphaService(aleph_alpha_token=request.token, collection_name=request.collection_name)
 
-    DOCS = search_database(request)
+    DOCS = search_database(request=request, aa_service=aa_service)
 
     if not DOCS:
         logger.info("No Documents found.")
@@ -332,17 +326,12 @@ def search_database(request: SearchRequest, aa_service: AlephAlphaService) -> Li
         JSON List of Documents consisting of the text, page, source and score.
     """
     logger.info("Searching for Documents")
-    token = get_token(
-        token=request.token,
-        aleph_alpha_key=ALEPH_ALPHA_API_KEY,
-    )
 
     # Embedd the documents with Aleph Alpha
     documents = aa_service.search_documents_aleph_alpha(
         query=request.query,
         amount=request.amount,
-        threshold=request.threshold,
-        collection_name=request.collection_name,
+        threshold=request.filtering.threshold,
     )
 
     logger.info(f"Found {len(documents)} documents.")

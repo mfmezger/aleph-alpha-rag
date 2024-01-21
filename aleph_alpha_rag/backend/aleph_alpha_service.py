@@ -78,8 +78,6 @@ class AlephAlphaService:
         """
         if not text:
             raise ValueError("Text cannot be None or empty.")
-        if not token:
-            raise ValueError("Token cannot be None or empty.")
 
         client = Client(token=self.aleph_alpha_token)
 
