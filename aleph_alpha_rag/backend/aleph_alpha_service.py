@@ -2,23 +2,25 @@
 
 import os
 import pathlib
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import nltk
 import numpy as np
 from aleph_alpha_client import Client, CompletionRequest, ExplanationRequest, Prompt
 from dotenv import load_dotenv
 from langchain.docstore.document import Document as LangchainDocument
-from langchain.document_loaders import DirectoryLoader, PyPDFium2Loader
-from langchain.embeddings import AlephAlphaAsymmetricSemanticEmbedding
+from langchain.prompts import ChatPromptTemplate
 from langchain.text_splitter import NLTKTextSplitter
-from langchain.vectorstores import Qdrant
+from langchain_community.document_loaders import DirectoryLoader, PyPDFium2Loader
+from langchain_community.vectorstores import Qdrant
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 from loguru import logger
 from omegaconf import DictConfig
-from qdrant_client import QdrantClient
+from ultra_simple_config import load_config
 
-from aleph_alpha_rag.utils.configuration import load_config
 from aleph_alpha_rag.utils.utility import generate_prompt
+from aleph_alpha_rag.utils.vdb import get_db_connection
 
 nltk.download("punkt")  # This needs to be installed for the tokenizer to work.
 load_dotenv()
@@ -27,11 +29,11 @@ aleph_alpha_token = os.getenv("ALEPH_ALPHA_API_KEY")
 tokenizer = None
 
 
-def get_tokenizer():
+def get_tokenizer(aleph_alpha_token: str):
     """Initialize the tokenizer."""
     global tokenizer
     client = Client(token=aleph_alpha_token)
-    tokenizer = client.tokenizer("luminous-base-control")
+    tokenizer = client.tokenizer("luminous-base")
 
 
 def count_tokens(text: str):
@@ -47,470 +49,291 @@ def count_tokens(text: str):
     return len(tokens)
 
 
-@load_config(location="config/db.yml")
-def get_db_connection(aleph_alpha_token: str, cfg: DictConfig, collection_name: Optional[str] = None) -> Qdrant:
-    """Initializes a connection to the Qdrant DB.
+class AlephAlphaService:
+    """The Aleph Alpha Service. This class is used to interact with the Aleph Alpha API."""
 
-    Args:
-        cfg (DictConfig): The configuration file loaded via OmegaConf.
-        aleph_alpha_token (str): The Aleph Alpha API token.
+    @load_config(location="config/main.yml")
+    def __init__(self, cfg: DictConfig, collection_name: str, aleph_alpha_token: str):
+        """Initialize the Ollama Service."""
+        self.cfg = cfg
+        self.collection_name = collection_name
+        self.aleph_alpha_token = aleph_alpha_token
+        self.vector_db: Qdrant = get_db_connection(collection_name=self.collection_name, aleph_alpha_token=self.aleph_alpha_token)
 
-    Returns:
-        Qdrant: The Qdrant DB connection.
-    """
-    embedding = AlephAlphaAsymmetricSemanticEmbedding(
-        model=cfg.aleph_alpha_embeddings.model_name,
-        aleph_alpha_api_key=aleph_alpha_token,
-        normalize=cfg.aleph_alpha_embeddings.normalize,
-        compress_to_size=cfg.aleph_alpha_embeddings.compress_to_size,
-    )
-    qdrant_client = QdrantClient(
-        cfg.qdrant.url,
-        port=cfg.qdrant.port,
-        api_key=os.getenv("QDRANT_API_KEY"),
-        prefer_grpc=cfg.qdrant.prefer_grpc,
-    )
+        if not self.aleph_alpha_token:
+            raise ValueError("Token cannot be None or empty.")
 
-    if collection_name is None or collection_name == "":
-        collection_name = cfg.qdrant.collection_name_aa
+    def send_completion_request(self, text: str) -> str:
+        """Sends a completion request to the Luminous API.
 
-    logger.info(f"USING COLLECTION: {collection_name}")
+        Args:
+            text (str): The prompt to be sent to the API.
+            token (str): The token for the Luminous API.
 
-    vector_db = Qdrant(client=qdrant_client, collection_name=collection_name, embeddings=embedding)
-    logger.info("SUCCESS: Qdrant DB initialized.")
+        Returns:
+            str: The response from the API.
 
-    return vector_db
+        Raises:
+            ValueError: If the text or token is None or empty, or if the response or completion is empty.
+        """
+        if not text:
+            raise ValueError("Text cannot be None or empty.")
 
+        client = Client(token=self.aleph_alpha_token)
 
-@load_config(location="config/ai/aleph_alpha.yml")
-def send_completion_request(text: str, token: str, cfg: DictConfig) -> str:
-    """Sends a completion request to the Luminous API.
+        request = CompletionRequest(
+            prompt=Prompt.from_text(text),
+            maximum_tokens=self.cfg.aleph_alpha_completion.max_tokens,
+            stop_sequences=[self.cfg.aleph_alpha_completion.stop_sequences],
+            repetition_penalties_include_completion=self.cfg.aleph_alpha_completion.repetition_penalties_include_completion,
+        )
+        response = client.complete(request, model=self.cfg.aleph_alpha_completion.model)
 
-    Args:
-        text (str): The prompt to be sent to the API.
-        token (str): The token for the Luminous API.
+        # ensure that the response is not empty
+        if not response.completions:
+            raise ValueError("Response is empty.")
 
-    Returns:
-        str: The response from the API.
+        # ensure that the completion is not empty
+        if not response.completions[0].completion:
+            raise ValueError("Completion is empty.")
 
-    Raises:
-        ValueError: If the text or token is None or empty, or if the response or completion is empty.
-    """
-    if not text:
-        raise ValueError("Text cannot be None or empty.")
-    if not token:
-        raise ValueError("Token cannot be None or empty.")
+        return str(response.completions[0].completion)
 
-    client = Client(token=token)
+    def embedd_documents(
+        self,
+        dir: str,
+    ) -> None:
+        """Embeds the documents in the given directory in the Aleph Alpha database.
 
-    request = CompletionRequest(
-        prompt=Prompt.from_text(text),
-        maximum_tokens=cfg.aleph_alpha_completion.max_tokens,
-        stop_sequences=[cfg.aleph_alpha_completion.stop_sequences],
-        repetition_penalties_include_completion=cfg.aleph_alpha_completion.repetition_penalties_include_completion,
-    )
-    response = client.complete(request, model=cfg.aleph_alpha_completion.model)
+        This method uses the Directory Loader for PDFs and the PyPDFium2Loader to load the documents.
+        The documents are then added to the Qdrant DB which embeds them without deleting the old collection.
 
-    # ensure that the response is not empty
-    if not response.completions:
-        raise ValueError("Response is empty.")
+        Args:
+            dir (str): The directory containing the PDFs to embed.
+            aleph_alpha_token (str): The Aleph Alpha API token.
 
-    # ensure that the completion is not empty
-    if not response.completions[0].completion:
-        raise ValueError("Completion is empty.")
+        Returns:
+            None
+        """
+        vector_db: Qdrant = get_db_connection(collection_name=self.collection_name, aleph_alpha_token=self.aleph_alpha_token)
 
-    return str(response.completions[0].completion)
+        loader = DirectoryLoader(dir, glob="*.pdf", loader_cls=PyPDFium2Loader)
+        get_tokenizer(self.aleph_alpha_token)
 
+        splitter = NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)
+        docs = loader.load_and_split(splitter)
 
-def embedd_documents(dir: str, aleph_alpha_token: str, collection_name: Optional[str] = None) -> None:
-    """Embeds the documents in the given directory in the Aleph Alpha database.
+        logger.info(f"Loaded {len(docs)} documents.")
+        text_list = [doc.page_content for doc in docs]
+        metadata_list = [doc.metadata for doc in docs]
 
-    This method uses the Directory Loader for PDFs and the PyPDFium2Loader to load the documents.
-    The documents are then added to the Qdrant DB which embeds them without deleting the old collection.
+        for m in metadata_list:
+            m["source"] = m["source"].split("/")[-1]
 
-    Args:
-        dir (str): The directory containing the PDFs to embed.
-        aleph_alpha_token (str): The Aleph Alpha API token.
-
-    Returns:
-        None
-    """
-    vector_db: Qdrant = get_db_connection(collection_name=collection_name, aleph_alpha_token=aleph_alpha_token)
-
-    loader = DirectoryLoader(dir, glob="*.pdf", loader_cls=PyPDFium2Loader)
-    get_tokenizer()
-
-    splitter = NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)
-    docs = loader.load_and_split(splitter)
-
-    logger.info(f"Loaded {len(docs)} documents.")
-    text_list = [doc.page_content for doc in docs]
-    metadata_list = [doc.metadata for doc in docs]
-    vector_db.add_texts(texts=text_list, metadatas=metadata_list)
-
-    logger.info("SUCCESS: Texts embedded.")
-
-
-def embedd_text_files(
-    folder: str,
-    aleph_alpha_token: str,
-    seperator: str,
-    collection_name: Optional[str] = None,
-) -> None:
-    """Embeds text files in the Aleph Alpha database.
-
-    Args:
-        folder (str): The folder containing the text files to embed.
-        aleph_alpha_token (str): The Aleph Alpha API token.
-        seperator (str): The seperator to use when splitting the text into chunks.
-
-    Returns:
-        None
-    """
-    vector_db: Qdrant = get_db_connection(collection_name=collection_name, aleph_alpha_token=aleph_alpha_token)
-
-    # iterate over the files in the folder
-    for file in os.listdir(folder):
-        # check if the file is a .txt or .md file
-        if not file.endswith((".txt", ".md")):
-            continue
-
-        # read the text from the file
-        text = pathlib.Path(os.path.join(folder, file)).read_text()
-        text_list: List = text.split(seperator)
-
-        # check if first and last element are empty
-        if not text_list[0]:
-            text_list.pop(0)
-        if not text_list[-1]:
-            text_list.pop(-1)
-
-        # ensure that the text is not empty
-        if not text_list:
-            raise ValueError("Text is empty.")
-
-        logger.info(f"Loaded {len(text_list)} documents.")
-        # get the name of the file
-        metadata = os.path.splitext(file)[0]
-        # add _ and an incrementing number to the metadata
-        metadata_list: List = [{"source": f"{metadata}_{str(i)}", "page": 0} for i in range(len(text_list))]
         vector_db.add_texts(texts=text_list, metadatas=metadata_list)
 
-    logger.info("SUCCESS: Text embedded.")
+        logger.info("SUCCESS: Texts embedded.")
 
+    def embedd_text_files(self, folder: str, seperator: str) -> None:
+        """Embeds text files in the Aleph Alpha database.
 
-def search_documents_aleph_alpha(
-    aleph_alpha_token: str,
-    query: str,
-    amount: int = 1,
-    threshold: float = 0.0,
-    collection_name: Optional[str] = None,
-) -> List[Tuple[LangchainDocument, float]]:
-    """Searches the Aleph Alpha service for similar documents.
+        Args:
+            folder (str): The folder containing the text files to embed.
+            aleph_alpha_token (str): The Aleph Alpha API token.
+            seperator (str): The seperator to use when splitting the text into chunks.
 
-    Args:
-        aleph_alpha_token (str): Aleph Alpha API Token.
-        query (str): The query that should be searched for.
-        amount (int, optional): The number of documents to return. Defaults to 1.
+        Returns:
+            None
+        """
+        vector_db: Qdrant = get_db_connection(collection_name=self.collection_name, aleph_alpha_token=self.aleph_alpha_token)
 
-    Returns
-        List[Tuple[Document, float]]: A list of tuples containing the documents and their similarity scores.
-    """
-    if not aleph_alpha_token:
-        raise ValueError("Token cannot be None or empty.")
-    if not query:
-        raise ValueError("Query cannot be None or empty.")
-    if amount < 1:
-        raise ValueError("Amount must be greater than 0.")
-    # TODO: FILTER
-    try:
-        vector_db: Qdrant = get_db_connection(collection_name=collection_name, aleph_alpha_token=aleph_alpha_token)
-        docs = vector_db.similarity_search_with_score(query=query, k=amount, score_threshold=threshold)
-        logger.info("SUCCESS: Documents found.")
-        return docs
-    except Exception as e:
-        logger.error(f"ERROR: Failed to search documents: {e}")
-        raise Exception(f"Failed to search documents: {e}") from e
+        # iterate over the files in the folder
+        for file in os.listdir(folder):
+            # check if the file is a .txt or .md file
+            if not file.endswith((".txt", ".md")):
+                continue
 
+            # read the text from the file
+            text = pathlib.Path(os.path.join(folder, file)).read_text()
+            text_list: List = text.split(seperator)
 
-def qa_aleph_alpha(
-    aleph_alpha_token: str,
-    documents: list[tuple[LangchainDocument, float]],
-    query: str,
-    summarization: bool = False,
-) -> Tuple[str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]:
-    """QA takes a list of documents and returns a list of answers.
+            # check if first and last element are empty
+            if not text_list[0]:
+                text_list.pop(0)
+            if not text_list[-1]:
+                text_list.pop(-1)
 
-    Args:
-        aleph_alpha_token (str): The Aleph Alpha API token.
-        documents (List[Tuple[Document, float]]): A list of tuples containing the document and its relevance score.
-        query (str): The query to ask.
-        summarization (bool, optional): Whether to use summarization. Defaults to False.
+            # ensure that the text is not empty
+            if not text_list:
+                raise ValueError("Text is empty.")
 
-    Returns:
-        Tuple[str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]: A tuple containing the answer, the prompt, and the metadata for the documents.
-    """
-    # if the list of documents contains only one document extract the text directly
-    if len(documents) == 1:
-        text = documents[0][0].page_content
-        meta_data = documents[0][0].metadata
+            logger.info(f"Loaded {len(text_list)} documents.")
+            # get the name of the file
+            metadata = os.path.splitext(file)[0]
+            # add _ and an incrementing number to the metadata
+            metadata_list: List = [{"source": f"{metadata}_{str(i)}", "page": 0} for i in range(len(text_list))]
+            vector_db.add_texts(texts=text_list, metadatas=metadata_list)
 
-    else:
-        # extract the text from the documents
-        texts = [doc[0].page_content for doc in documents]
-        if summarization:
-            text = "".join(summarize_text_aleph_alpha(t, aleph_alpha_token) for t in texts)
+        logger.info("SUCCESS: Text embedded.")
+
+    def search_documents_aleph_alpha(self, query: str, amount: int = 1, threshold: float = 0.0) -> List[Tuple[LangchainDocument, float]]:
+        """Searches the Aleph Alpha service for similar documents.
+
+        Args:
+            aleph_alpha_token (str): Aleph Alpha API Token.
+            query (str): The query that should be searched for.
+            amount (int, optional): The number of documents to return. Defaults to 1.
+
+        Returns
+            List[Tuple[Document, float]]: A list of tuples containing the documents and their similarity scores.
+        """
+        if not query:
+            raise ValueError("Query cannot be None or empty.")
+        if amount < 1:
+            raise ValueError("Amount must be greater than 0.")
+        # TODO: FILTER
+        try:
+            vector_db: Qdrant = get_db_connection(collection_name=self.collection_name, aleph_alpha_token=self.aleph_alpha_token)
+            docs = vector_db.similarity_search_with_score(query=query, k=amount, score_threshold=threshold)
+            logger.info("SUCCESS: Documents found.")
+            return docs
+        except Exception as e:
+            logger.error(f"ERROR: Failed to search documents: {e}")
+            raise Exception(f"Failed to search documents: {e}") from e
+
+    def qa(
+        self,
+        documents: list[tuple[LangchainDocument, float]],
+        query: str,
+        summarization: bool = False,
+    ) -> Tuple[str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]:
+        """QA takes a list of documents and returns a list of answers.
+
+        Args:
+            aleph_alpha_token (str): The Aleph Alpha API token.
+            documents (List[Tuple[Document, float]]): A list of tuples containing the document and its relevance score.
+            query (str): The query to ask.
+            summarization (bool, optional): Whether to use summarization. Defaults to False.
+
+        Returns:
+            Tuple[str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]: A tuple containing the answer, the prompt, and the metadata for the documents.
+        """
+        # TODO: improve this code
+        # if the list of documents contains only one document extract the text directly
+        if len(documents) == 1:
+            text = documents[0][0].page_content
+            meta_data = documents[0][0].metadata
+
         else:
-            # combine the texts to one text
-            text = " ".join(texts)
-        meta_data = [doc[0].metadata for doc in documents]
+            # extract the text from the documents
+            texts = [doc[0].page_content for doc in documents]
+            if summarization:
+                text = "".join(self.summarize_text_aleph_alpha(t) for t in texts)
+            else:
+                # combine the texts to one text
+                text = " ".join(texts)
+            meta_data = [doc[0].metadata for doc in documents]
 
-    # load the prompt
-    prompt = generate_prompt("aleph_alpha_qa.j2", text=text, query=query)
+        # load the prompt
+        prompt = generate_prompt("qa.j2", text=text, query=query)
 
-    try:
-        # call the luminous api
-        answer = send_completion_request(prompt, aleph_alpha_token)
-
-    except ValueError as e:
-        # if the code is PROMPT_TOO_LONG, split it into chunks
-        if e.args[0] == "PROMPT_TOO_LONG":
-            logger.info("Prompt too long. Summarizing.")
-
-            # summarize the text
-            short_text = summarize_text_aleph_alpha(text, aleph_alpha_token)
-
-            # generate the prompt
-            prompt = generate_prompt("aleph_alpha_qa.j2", text=short_text, query=query)
-
+        try:
             # call the luminous api
-            answer = send_completion_request(prompt, aleph_alpha_token)
+            answer = self.send_completion_request(prompt)
 
-    # extract the answer
-    return answer, prompt, meta_data
+        except ValueError as e:
+            # if the code is PROMPT_TOO_LONG, split it into chunks
+            if e.args[0] == "PROMPT_TOO_LONG":
+                logger.info("Prompt too long. Summarizing.")
 
+                # summarize the text
+                short_text = self.summarize_text_aleph_alpha(text)
 
-@load_config(location="config/ai/aleph_alpha.yml")
-def explain_qa(
-    aleph_alpha_token: str,
-    document: LangchainDocument,
-    query: str,
-    cfg: DictConfig,
-    collection_name: Optional[str] = None,
-):
-    """Explian QA WIP."""
-    text = document[0][0].page_content
-    meta_data = document[0][0].metadata
+                # generate the prompt
+                prompt = generate_prompt("qa.j2", text=short_text, query=query)
 
-    # load the prompt
-    prompt = generate_prompt("aleph_alpha_qa.j2", text=text, query=query)
+                # call the luminous api
+                answer = self.send_completion_request(prompt)
 
-    answer = send_completion_request(prompt, aleph_alpha_token)
+        # extract the answer
+        return answer, prompt, meta_data
 
-    exp_req = ExplanationRequest(
-        Prompt.from_text(prompt),
-        answer,
-        control_factor=0.1,
-        prompt_granularity="sentence",
-        normalize=True,
-    )
-    client = Client(token=aleph_alpha_token)
+    def explain_qa(self, document: LangchainDocument, query: str) -> Tuple[str, float, str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]:
+        """Explain QA."""
+        text = document[0][0].page_content
+        meta_data = document[0][0].metadata
 
-    response_explain = client.explain(exp_req, model=cfg.aleph_alpha_completion.model)
-    explanations = response_explain.explanations[0].items[0].scores
+        # load the prompt
+        prompt = generate_prompt("qa.j2", text=text, query=query)
 
-    # if all of the scores are belo 0.7 raise an error
-    if all(item.score < 0.7 for item in explanations):
-        raise ValueError("All scores are below 0.7.")
+        answer = self.send_completion_request(text=prompt)
 
-    # remove element if the text contains Response: or Instructions:
-    for exp in explanations:
-        txt = prompt[exp.start : exp.start + exp.length]
-        if "Response:" in txt or "Instruction:" in txt:
-            explanations.remove(exp)
+        exp_req = ExplanationRequest(
+            Prompt.from_text(prompt),
+            answer,
+            control_factor=0.1,
+            prompt_granularity="sentence",
+            normalize=True,
+        )
+        client = Client(token=aleph_alpha_token)
 
-    # pick the top explanation based on score
-    top_explanation = max(explanations, key=lambda x: x.score)
+        response_explain = client.explain(exp_req, model=self.cfg.aleph_alpha_completion.model)
+        explanations = response_explain.explanations[0].items[0].scores
 
-    # get the start and end of the explanation
-    start = top_explanation.start
-    end = top_explanation.start + top_explanation.length
+        # if all of the scores are belo 0.7 raise an error
+        if all(item.score < 0.7 for item in explanations):
+            raise ValueError("All scores are below 0.7.")
 
-    # get the explanation from the prompt
-    explanation = prompt[start:end]
+        # remove element if the text contains Response: or Instructions:
+        for exp in explanations:
+            txt = prompt[exp.start : exp.start + exp.length]
+            if "Response:" in txt or "Instruction:" in txt:
+                explanations.remove(exp)
 
-    # get the score
-    score = np.round(top_explanation.score, decimals=3)
+        # pick the top explanation based on score
+        top_explanation = max(explanations, key=lambda x: x.score)
 
-    # get the text from the document
-    text = document[0][0].page_content
+        # get the start and end of the explanation
+        start = top_explanation.start
+        end = top_explanation.start + top_explanation.length
 
-    return explanation, score, text, answer, meta_data
+        # get the explanation from the prompt
+        explanation = prompt[start:end]
 
+        # get the score
+        score = np.round(top_explanation.score, decimals=3)
 
-def explain_completion(prompt: str, output: str, token: str) -> Dict[str, float]:
-    # TODO: repair
-    """Returns an explanation of the given completion.
+        # get the text from the document
+        text = document[0][0].page_content
 
-    Args:
-        prompt (str): The complete input in the model.
-        output (str): The answer of the model.
-        token (str): The Aleph Alpha API Token.
+        return explanation, score, text, answer, meta_data
 
-    Returns:
-        dict: A dictionary containing the explanation. The keys are sentences from the prompt, and the values are the scores.
+    def qa_chain(self, query: str):
+        """QA Chain Imp."""
+        from langchain.llms import AlephAlpha
 
-    Raises:
-        ValueError: If the prompt, output, or token is None or empty.
-    """
-    exp_req = ExplanationRequest(
-        Prompt.from_text(prompt),
-        output,
-        control_factor=0.1,
-        prompt_granularity="sentence",
-    )
-    client = Client(token=token)
-    response_explain = client.explain(exp_req, model="luminous-extended-control")
-    explanations = response_explain.explanations[0]
+        model = AlephAlpha(
+            model="luminous-extended",
+            maximum_tokens=20,
+            stop_sequences=["Q:"],
+            aleph_alpha_api_key=self.aleph_alpha_token,
+        )
+        vector_db: Qdrant = get_db_connection(collection_name=self.collection_name, aleph_alpha_token=self.aleph_alpha_token)
 
-    # sort the explanations by score
-    # explanations = sorted(explanations, key=lambda x: x.score, reverse=True)
+        retriever = vector_db.as_retriever()
 
-    template = generate_prompt(prompt_name="aleph_alpha_qa.j2", text="", language="de")
+        template = """Answer the question based only on the following context:
+        {context}
 
-    result = {}
-    # remove the prompt from the explanations
-    for item in explanations:
-        start = item.start
-        end = item.start + item.length
-        if prompt[start:end] not in template:
-            result[prompt[start:end]] = np.round(item.score, decimals=3)
+        Question: {question}
+        """
+        prompt = ChatPromptTemplate.from_template(template)
 
-    return result
+        chain = {"context": retriever, "question": RunnablePassthrough()} | prompt | model | StrOutputParser()
 
+        answer = chain.invoke(query)
 
-def process_documents(folder: str, token: str, type: str) -> List[str]:
-    """Process the documents in the given folder.
-
-    Args:
-        folder (str): Folder where the documents are located.
-        token (str): The Aleph Alpha API Token.
-        type (str): The type of the documents.
-
-    Raises:
-        ValueError: If the type is not one of 'qa', 'summarization', or 'invoice'.
-    """
-    # load the documents
-    loader = DirectoryLoader(folder, glob="*.pdf", loader_cls=PyPDFium2Loader)
-
-    # load the documents
-    docs = loader.load()
-
-    # load the correct prompt
-    match type:
-        case "qa":
-            raise NotImplementedError
-        case "summarization":
-            raise NotImplementedError
-        case "invoice":
-            # load the prompt
-            prompt_name = "aleph-alpha-invoice.j2"
-        case _:
-            raise ValueError("Type must be one of 'qa', 'summarization', or 'invoice'.")
-
-    # generate the prompt
-    answers = []
-    # iterate over the documents
-    for doc in docs:
-        # combine the prompt and the text
-        prompt_text = generate_prompt(prompt_name=prompt_name, text=doc.page_content, language="en")
-        # call the luminous api
-        answer = send_completion_request(prompt_text, token)
-
-        answers.append(answer)
-
-    return answers
-
-
-def custom_completion_prompt_aleph_alpha(
-    token: str,
-    prompt: str,
-    model: str = "luminous-extended-control",
-    max_tokens: int = 256,
-    stop_sequences: List[str] = ["###"],
-    temperature: float = 0,
-) -> str:
-    """This method sents a custom completion request to the Aleph Alpha API.
-
-    Args:
-        token (str): The token for the Aleph Alpha API.
-        prompt (str): The prompt to be sent to the API.
-
-    Raises:
-        ValueError: Error if their are no completions or the completion is empty or the prompt and tokenis empty.
-    """
-    if not prompt:
-        raise ValueError("Prompt cannot be None or empty.")
-    if not token:
-        raise ValueError("Token cannot be None or empty.")
-
-    client = Client(token=token)
-
-    request = CompletionRequest(
-        prompt=Prompt.from_text(prompt),
-        maximum_tokens=max_tokens,
-        stop_sequences=stop_sequences,
-        temperature=temperature,
-    )
-    response = client.complete(request, model=model)
-
-    # ensure that the response is not empty
-    if not response.completions:
-        raise ValueError("Response is empty.")
-
-    # ensure that the completion is not empty
-    if not response.completions[0].completion:
-        raise ValueError("Completion is empty.")
-
-    return str(response.completions[0].completion)
-
-
-from langchain.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
-
-
-def qa_chain(query: str, token: str, collection_name: str):
-    """QA Chain Imp."""
-    from langchain.llms import AlephAlpha
-
-    model = AlephAlpha(
-        model="luminous-extended",
-        maximum_tokens=20,
-        stop_sequences=["Q:"],
-        aleph_alpha_api_key=token,
-    )
-    vector_db: Qdrant = get_db_connection(collection_name=collection_name, aleph_alpha_token=token)
-
-    retriever = vector_db.as_retriever()
-
-    template = """Answer the question based only on the following context:
-    {context}
-
-    Question: {question}
-    """
-    prompt = ChatPromptTemplate.from_template(template)
-
-    chain = {"context": retriever, "question": RunnablePassthrough()} | prompt | model | StrOutputParser()
-
-    answer = chain.invoke(query)
-
-    logger.info(answer)
-
-
-def self_question_qa():
-    """Self question QA."""
-    # TODO
+        logger.info(answer)
 
 
 if __name__ == "__main__":
@@ -519,15 +342,15 @@ if __name__ == "__main__":
     if not token:
         raise ValueError("Token cannot be None or empty.")
 
-    # embedd_documents_aleph_alpha("data", token)
+    aa_service = AlephAlphaService(collection_name="aleph_alpha", aleph_alpha_token=token)
 
-    qa_chain("What is Attention", token, "aleph_alpha")
+    # aa_service.embedd_documents("tests/resources")
 
-# open the text file and read the text
-# DOCS = search_documents_aleph_alpha(aleph_alpha_token=token, query="What are Attentions?", amount=1)
-# logger.info(DOCS)
-# explanation, score, text, answer, meta_data = explain_qa(aleph_alpha_token=token, document=DOCS, query="What are Attentions?")
-# logger.info(f"Answer: {answer}")
-# explanations = explain_completion(prompt, answer, token)
+    docs = aa_service.search_documents_aleph_alpha(query="What are Attentions?", amount=3)
 
-# print(explanation)
+    # logger.info(docs)
+
+    answer, prompt, meta_data = aa_service.qa(documents=docs, query="What are Attentions?")
+    logger.info(answer)
+    explanation, score, text, answer, meta_data = aa_service.explain_qa(document=docs, query="What are Attentions?")
+    logger.info(explanation)

@@ -8,7 +8,7 @@ from loguru import logger
 
 from aleph_alpha_rag.backend.aleph_alpha_service import (
     explain_completion,
-    qa_aleph_alpha,
+    qa,
     search_documents_aleph_alpha,
 )
 
@@ -38,7 +38,7 @@ def create_folder_structure(folder_path: str) -> None:
 def search_documents(token: str, query: str) -> Tuple[str, str, str, List[Tuple[Document, float]]]:
     """Search the documents and return the answer, prompt, and metadata."""
     documents = search_documents_aleph_alpha(query=query, aleph_alpha_token=token)
-    answer, prompt, meta_data = qa_aleph_alpha(query=query, documents=documents, aleph_alpha_token=token)
+    answer, prompt, meta_data = qa(query=query, documents=documents, aleph_alpha_token=token)
     return answer, prompt, meta_data, documents
 
 

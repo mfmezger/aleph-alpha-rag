@@ -115,13 +115,19 @@ def get_token(
     Raises:
         ValueError: If no token is provided.
     """
+    if aleph_alpha_key == "string":
+        aleph_alpha_key = None
+
+    if token == "string":
+        token = None
+
     if not aleph_alpha_key and not token:
         raise ValueError("No token provided.")
 
     return token or aleph_alpha_key  # type: ignore
 
 
-@load_config("config/db.yml")
+@load_config("config/main.yml")
 def load_vec_db_conn(cfg: DictConfig) -> QdrantClient:
     """Load the Vector Database Connection."""
     qdrant_client = QdrantClient(
@@ -135,4 +141,4 @@ def load_vec_db_conn(cfg: DictConfig) -> QdrantClient:
 
 if __name__ == "__main__":
     # test the function
-    generate_prompt("aleph_alpha_qa.j2", "This is a test text.", "What is the meaning of life?")
+    generate_prompt("qa.j2", "This is a test text.", "What is the meaning of life?")

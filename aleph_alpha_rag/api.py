@@ -12,16 +12,8 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.http.models.models import UpdateResult
 from starlette.responses import JSONResponse
 
-from aleph_alpha_rag.backend.aleph_alpha_service import (
-    custom_completion_prompt_aleph_alpha,
-    embedd_documents,
-    embedd_text_files,
-    explain_qa,
-    qa_aleph_alpha,
-    search_documents_aleph_alpha,
-)
+from aleph_alpha_rag.backend.aleph_alpha_service import AlephAlphaService
 from aleph_alpha_rag.data_model.request_data_model import (
-    CustomPromptCompletion,
     EmbeddTextFilesRequest,
     ExplainQARequest,
     QARequest,
@@ -40,9 +32,10 @@ from aleph_alpha_rag.utils.utility import (
     get_token,
     load_vec_db_conn,
 )
+from aleph_alpha_rag.utils.vdb import generate_collection
 
 # add file logger for loguru
-logger.add("logs/file_{time}.log", backtrace=False, diagnose=False)
+# logger.add("logs/file_{time}.log", backtrace=False, diagnose=False)
 logger.info("Startup.")
 
 
@@ -69,7 +62,6 @@ app.openapi = my_schema  # type: ignore
 load_dotenv()
 
 # load the token from the environment variables, is None if not set.
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 ALEPH_ALPHA_API_KEY = os.environ.get("ALEPH_ALPHA_API_KEY")
 logger.info("Loading REST API Finished.")
 
@@ -84,47 +76,18 @@ def read_root() -> str:
     return "Welcome to the Simple Aleph Alpha FastAPI Backend!"
 
 
-def embedd_documents_wrapper(
-    folder_name: str,
-    token: Optional[str] = None,
-    collection_name: Optional[str] = None,
-) -> None:
-    """Call the right embedding function for the chosen backend.
-
-    Args:
-        folder_name (str): Name of the temporary folder.
-        llm_backend (str, optional): LLM provider. Defaults to "openai".
-        token (str, optional): Token for the LLM Provider of choice. Defaults to None.
-
-    Raises:
-        ValueError: If an invalid LLM Provider is set.
-    """
-    token = get_token(
-        token=token,
-        aleph_alpha_key=ALEPH_ALPHA_API_KEY,
-    )
-
-    # Embedd the documents with Aleph Alpha
-    logger.debug("Embedding Documents with Aleph Alpha.")
-    embedd_documents(dir=folder_name, aleph_alpha_token=token, collection_name=collection_name)
-
-
-@app.post("/collection/create/{collection_name}")
-@load_config(location="config/db.yml")
-def create_collection(collection_name: str) -> None:
+@app.post("/collection/create/{collection_name}/{embeddings_size}")
+def create_collection(collection_name: str, embeddings_size: int = 5120) -> None:
     """Create a new collection in the vector database.
 
     Args:
-        llm_provider (LLMProvider): Name of the LLM Provider
         collection_name (str): Name of the Collection
+        embeddings_size (int, optional): Size of the Embeddings. Defaults to 5120.
     """
     qdrant_client, _ = initialize_qdrant_client_config()
 
     try:
-        qdrant_client.recreate_collection(
-            collection_name=collection_name,
-            vectors_config=models.VectorParams(size=cfg.aleph_alpha_embeddings.size, distance=models.Distance.COSINE),
-        )
+        generate_collection(qdrant_client, collection_name=collection_name, embeddings_size=embeddings_size)
     except Exception:
         logger.info(f"FAILURE: Collection {collection_name} already exists or could not created.")
     logger.info(f"SUCCESS: Collection {collection_name} created.")
@@ -164,11 +127,10 @@ async def post_embedd_documents(
         with open(os.path.join(tmp_dir, file_name), "wb") as f:
             f.write(await file.read())
 
-    embedd_documents_wrapper(
-        folder_name=tmp_dir,
-        token=token,
-        collection_name=collection_name,
-    )
+    # Embedd the documents with Aleph Alpha
+    logger.debug("Embedding Documents with Aleph Alpha.")
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=collection_name)
+    aa_service.embedd_documents(dir=tmp_dir)
 
     return EmbeddingResponse(status="success", files=file_names)
 
@@ -210,10 +172,8 @@ async def post_embedd_text_files(request: EmbeddTextFilesRequest) -> EmbeddingRe
         aleph_alpha_key=ALEPH_ALPHA_API_KEY,
     )
 
-    if request.llm_backend is None:
-        raise ValueError("Please provide a LLM Provider of choice.")
-
-    embedd_text_files(folder=tmp_dir, aleph_alpha_token=token, seperator=request.seperator)
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.collection_name)
+    aa_service.embedd_text_files(folder=tmp_dir, aleph_alpha_token=token, seperator=request.seperator)
 
     return EmbeddingResponse(status="success", files=file_names)
 
@@ -233,19 +193,12 @@ def post_question_answer(request: QARequest) -> QAResponse:
     """
     logger.info("Answering Question")
     # if the query is not provided, raise an error
-    if request.query is None:
-        raise ValueError("Please provide a Question.")
-
     token = get_token(
-        token=request.token,
-        llm_backend=request.llm_backend,
+        token=request.search.token,
         aleph_alpha_key=ALEPH_ALPHA_API_KEY,
-        openai_key=OPENAI_API_KEY,
     )
 
-    # if the history flag is activated and the history is not provided, raise an error
-    if request.history and request.history_list is None:
-        raise ValueError("Please provide a HistoryList.")
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.search.collection_name)
 
     # summarize the history
     if request.history:
@@ -256,13 +209,17 @@ def post_question_answer(request: QARequest) -> QAResponse:
         # summary = summarize_text_aleph_alpha(text=text, token=token)
         # combine the history and the query
         summary = ""
-        request.query = f"{summary}\n{request.query}"
+        request.search.query = f"{summary}\n{request.search.query}"
 
-    documents = search_database(request.search)
+    documents = search_database(request=request.search, aa_service=aa_service)
 
     # call the qa function
 
-    answer, prompt, meta_data = qa_aleph_alpha(query=request.query, documents=documents, aleph_alpha_token=token)
+    answer, prompt, meta_data = aa_service.qa(query=request.search.query, documents=documents)
+
+    # return_meta_data = []
+    # for m in meta_data:
+    #     return_meta_data.append(MetaData(page=m["page"], source=m["source"]))
 
     return QAResponse(answer=answer, prompt=prompt, meta_data=meta_data)
 
@@ -293,11 +250,12 @@ def post_explain_question_answer(request: ExplainQARequest) -> ExplainQAResponse
         token=request.qa.search.token,
         aleph_alpha_key=ALEPH_ALPHA_API_KEY,
     )
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.qa.search.collection_name)
 
-    documents = search_database(request.qa.search)
+    documents = search_database(request.qa.search, aa_service=aa_service)
 
     # call the qa function
-    explanation, score, text, answer, meta_data = explain_qa(query=request.qa.search.query, document=documents, aleph_alpha_token=token)
+    explanation, score, text, answer, meta_data = aa_service.explain_qa(query=request.qa.search.query, document=documents)
 
     return ExplainQAResponse(
         explanation=explanation,
@@ -323,14 +281,13 @@ def post_search(request: SearchRequest) -> List[SearchResponse]:
     """
     logger.info("Searching for Documents")
     request.token = get_token(
-        token=request.llm_backend.token,
+        token=request.token,
         aleph_alpha_key=ALEPH_ALPHA_API_KEY,
     )
 
-    if request.llm_backend is None:
-        raise ValueError("Please provide a LLM Provider of choice.")
+    aa_service = AlephAlphaService(aleph_alpha_token=request.token, collection_name=request.collection_name)
 
-    DOCS = search_database(request)
+    DOCS = search_database(request=request, aa_service=aa_service)
 
     if not DOCS:
         logger.info("No Documents found.")
@@ -356,7 +313,7 @@ def post_search(request: SearchRequest) -> List[SearchResponse]:
     return response
 
 
-def search_database(request: SearchRequest) -> List[tuple[LangchainDocument, float]]:
+def search_database(request: SearchRequest, aa_service: AlephAlphaService) -> List[tuple[LangchainDocument, float]]:
     """Searches the database for a query.
 
     Args:
@@ -369,93 +326,16 @@ def search_database(request: SearchRequest) -> List[tuple[LangchainDocument, flo
         JSON List of Documents consisting of the text, page, source and score.
     """
     logger.info("Searching for Documents")
-    token = get_token(
-        token=request.token,
-        aleph_alpha_key=ALEPH_ALPHA_API_KEY,
-    )
 
     # Embedd the documents with Aleph Alpha
-    documents = search_documents_aleph_alpha(
-        aleph_alpha_token=token,
+    documents = aa_service.search_documents_aleph_alpha(
         query=request.query,
         amount=request.amount,
-        threshold=request.threshold,
-        collection_name=request.collection_name,
+        threshold=request.filtering.threshold,
     )
 
     logger.info(f"Found {len(documents)} documents.")
     return documents
-
-
-@app.post("/process_document")
-async def process_document(
-    files: List[UploadFile] = File(...),
-    llm_backend: str = "aa",
-    token: Optional[str] = None,
-    type: str = "invoice",
-) -> None:
-    """Process a document.
-
-    Args:
-        files (UploadFile): _description_
-        llm_backend (str, optional): _description_. Defaults to "openai".
-        token (Optional[str], optional): _description_. Defaults to None.
-        type (str, optional): _description_. Defaults to "invoice".
-
-    Returns:
-        JSONResponse: _description_
-    """
-    logger.info("Processing Document")
-    token = get_token(
-        token=token,
-        llm_backend=llm_backend,
-        aleph_alpha_key=ALEPH_ALPHA_API_KEY,
-        openai_key=OPENAI_API_KEY,
-    )
-
-    # Create a temporary folder to save the files
-    tmp_dir = create_tmp_folder()
-
-    file_names = []
-
-    for file in files:
-        file_name = file.filename
-        file_names.append(file_name)
-
-        # Save the file to the temporary folder
-        if tmp_dir is None or not os.path.exists(tmp_dir):
-            raise ValueError("Please provide a temporary folder to save the files.")
-
-        if file_name is None:
-            raise ValueError("Please provide a file to save.")
-
-        with open(os.path.join(tmp_dir, file_name), "wb") as f:
-            f.write(await file.read())
-
-    process_documents_aleph_alpha(folder=tmp_dir, token=token, type=type)
-
-
-@app.post("/llm/completion/custom")
-async def custom_prompt_llm(request: CustomPromptCompletion) -> str:
-    """This method sents a custom completion request to the LLM Provider.
-
-    Args:
-        request (CustomPromptCompletion): The request parameters.
-
-    Raises:
-        ValueError: If the LLM provider is not implemented yet.
-    """
-    logger.info("Sending Custom Completion Request")
-    # sent a completion
-    answer = custom_completion_prompt_aleph_alpha(
-        prompt=request.prompt,
-        token=request.token,
-        model=request.model,
-        stop_sequences=request.stop_sequences,
-        temperature=request.temperature,
-        max_tokens=request.max_tokens,
-    )
-    return answer
 
 
 @app.delete("/embeddings/delete/{collection_name}/{page}/{source}")
@@ -497,7 +377,7 @@ def delete(
     return result
 
 
-@load_config(location="config/db.yml")
+@load_config(location="config/main.yml")
 def initialize_qdrant_client_config(cfg: DictConfig):
     """Initialize the Qdrant Client.
 
@@ -532,16 +412,6 @@ def initialize_aleph_alpha_vector_db() -> None:
             collection_name=cfg.qdrant.collection_name_aa,
             embeddings_size=cfg.aleph_alpha_embeddings.size,
         )
-
-
-def generate_collection(qdrant_client, collection_name, embeddings_size):
-    """Generate a collection for the Aleph Alpha Backend.
-
-    Args:
-        qdrant_client (_type_): _description_
-        collection_name (_type_): _description_
-        embeddings_size (_type_): _description_
-    """
 
 
 initialize_aleph_alpha_vector_db()

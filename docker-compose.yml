@@ -1,6 +1,7 @@
 services:
   aleph_alpha_rag:
     build: .
+    platform: linux/amd64
     volumes:
       - ./data:/data
       - ./logs:/logs
@@ -18,6 +19,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+    platform: linux/amd64
     ports:
       - "8501:8501"
 

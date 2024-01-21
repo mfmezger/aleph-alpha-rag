@@ -1,3 +1,15 @@
+qdrant:
+  url: http://qdrant
+  port: 6333
+  prefer_grpc: false
+  collection_name_aa: aleph_alpha
+
+aleph_alpha_embeddings:
+  normalize: True
+  size: 5120
+  compress_to_size: null
+  model_name: "luminous-base"
+
 aleph_alpha_completion:
   model: "luminous-extended-control"
   temperature: 0
