@@ -29,7 +29,7 @@ aleph_alpha_token = os.getenv("ALEPH_ALPHA_API_KEY")
 tokenizer = None
 
 
-def get_tokenizer():
+def get_tokenizer(aleph_alpha_token: str):
     """Initialize the tokenizer."""
     global tokenizer
     client = Client(token=aleph_alpha_token)
@@ -122,12 +122,16 @@ class AlephAlphaService:
         loader = DirectoryLoader(dir, glob="*.pdf", loader_cls=PyPDFium2Loader)
         get_tokenizer(self.aleph_alpha_token)
 
-        splitter = NLTKTextSplitter(length_function=count_tokens(), chunk_size=300, chunk_overlap=50)
+        splitter = NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)
         docs = loader.load_and_split(splitter)
 
         logger.info(f"Loaded {len(docs)} documents.")
         text_list = [doc.page_content for doc in docs]
         metadata_list = [doc.metadata for doc in docs]
+
+        for m in metadata_list:
+            m["source"] = m["source"].split("/")[-1]
+
         vector_db.add_texts(texts=text_list, metadatas=metadata_list)
 
         logger.info("SUCCESS: Texts embedded.")
@@ -199,7 +203,7 @@ class AlephAlphaService:
             logger.error(f"ERROR: Failed to search documents: {e}")
             raise Exception(f"Failed to search documents: {e}") from e
 
-    def qa_aleph_alpha(
+    def qa(
         self,
         documents: list[tuple[LangchainDocument, float]],
         query: str,
@@ -216,6 +220,7 @@ class AlephAlphaService:
         Returns:
             Tuple[str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]: A tuple containing the answer, the prompt, and the metadata for the documents.
         """
+        # TODO: improve this code
         # if the list of documents contains only one document extract the text directly
         if len(documents) == 1:
             text = documents[0][0].page_content
@@ -232,7 +237,7 @@ class AlephAlphaService:
             meta_data = [doc[0].metadata for doc in documents]
 
         # load the prompt
-        prompt = generate_prompt("aleph_alpha_qa.j2", text=text, query=query)
+        prompt = generate_prompt("qa.j2", text=text, query=query)
 
         try:
             # call the luminous api
@@ -247,7 +252,7 @@ class AlephAlphaService:
                 short_text = self.summarize_text_aleph_alpha(text)
 
                 # generate the prompt
-                prompt = generate_prompt("aleph_alpha_qa.j2", text=short_text, query=query)
+                prompt = generate_prompt("qa.j2", text=short_text, query=query)
 
                 # call the luminous api
                 answer = self.send_completion_request(prompt)
@@ -255,16 +260,15 @@ class AlephAlphaService:
         # extract the answer
         return answer, prompt, meta_data
 
-    @load_config(location="config/ai/main.yml")
-    def explain_qa(self, aleph_alpha_token: str, document: LangchainDocument, query: str) -> Tuple[str, float, str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]:
-        """Explian QA WIP."""
+    def explain_qa(self, document: LangchainDocument, query: str) -> Tuple[str, float, str, str, Union[Dict[Any, Any], List[Dict[Any, Any]]]]:
+        """Explain QA."""
         text = document[0][0].page_content
         meta_data = document[0][0].metadata
 
         # load the prompt
-        prompt = generate_prompt("aleph_alpha_qa.j2", text=text, query=query)
+        prompt = generate_prompt("qa.j2", text=text, query=query)
 
-        answer = self.send_completion_request(prompt, self.aleph_alpha_token)
+        answer = self.send_completion_request(text=prompt)
 
         exp_req = ExplanationRequest(
             Prompt.from_text(prompt),
@@ -342,15 +346,13 @@ if __name__ == "__main__":
 
     aa_service = AlephAlphaService(collection_name="aleph_alpha", aleph_alpha_token=token)
 
-    aa_service.embedd_documents_aleph_alpha("data")
+    # aa_service.embedd_documents("tests/resources")
 
-    aa_service.qa_chain("What is Attention", "aleph_alpha")
+    docs = aa_service.search_documents_aleph_alpha(query="What are Attentions?", amount=3)
 
-# open the text file and read the text
-# DOCS = search_documents_aleph_alpha(aleph_alpha_token=token, query="What are Attentions?", amount=1)
-# logger.info(DOCS)
-# explanation, score, text, answer, meta_data = explain_qa(aleph_alpha_token=token, document=DOCS, query="What are Attentions?")
-# logger.info(f"Answer: {answer}")
-# explanations = explain_completion(prompt, answer, token)
+    # logger.info(docs)
 
-# print(explanation)
+    answer, prompt, meta_data = aa_service.qa(documents=docs, query="What are Attentions?")
+    logger.info(answer)
+    explanation, score, text, answer, meta_data = aa_service.explain_qa(document=docs, query="What are Attentions?")
+    logger.info(explanation)

@@ -135,4 +135,4 @@ def load_vec_db_conn(cfg: DictConfig) -> QdrantClient:
 
 if __name__ == "__main__":
     # test the function
-    generate_prompt("aleph_alpha_qa.j2", "This is a test text.", "What is the meaning of life?")
+    generate_prompt("qa.j2", "This is a test text.", "What is the meaning of life?")
