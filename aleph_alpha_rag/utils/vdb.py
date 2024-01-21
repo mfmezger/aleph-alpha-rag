@@ -7,7 +7,7 @@ from langchain.embeddings import AlephAlphaAsymmetricSemanticEmbedding
 from langchain.vectorstores import Qdrant
 from loguru import logger
 from omegaconf import DictConfig
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 
 from aleph_alpha_rag.utils.configuration import load_config
 
@@ -45,3 +45,18 @@ def get_db_connection(aleph_alpha_token: str, cfg: DictConfig, collection_name: 
     logger.info("SUCCESS: Qdrant DB initialized.")
 
     return vector_db
+
+
+def generate_collection(qdrant_client, collection_name, embeddings_size):
+    """Generate a collection for the Aleph Alpha Backend.
+
+    Args:
+        qdrant_client (_type_): _description_
+        collection_name (_type_): _description_
+        embeddings_size (_type_): _description_
+    """
+    qdrant_client.recreate_collection(
+        collection_name=collection_name,
+        vectors_config=models.VectorParams(size=embeddings_size, distance=models.Distance.COSINE),
+    )
+    logger.info(f"SUCCESS: Collection {collection_name} created.")
