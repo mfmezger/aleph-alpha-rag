@@ -26,6 +26,7 @@ class EmbeddTextFilesRequest(BaseModel):
 
     files: List[UploadFile] = Field(..., description="The list of text files to embed.")
     seperator: str = Field("###", description="The seperator to use between embedded texts.")
+    token: Optional[str] = Field(None, title="Token", description="The API token for the LLM provider.")
 
 
 class SearchRequest(BaseModel):
@@ -44,17 +45,6 @@ class EmbeddTextRequest(BaseModel):
     text: str = Field(..., title="Text", description="The text to embed.")
     file_name: str = Field(..., title="File Name", description="The name of the file to save the embedded text to.")
     seperator: str = Field("###", title="seperator", description="The seperator to use between embedded texts.")
-
-
-class CustomPromptCompletion(BaseModel):
-    """The Custom Prompt Completion Model."""
-
-    token: str = Field(..., title="Token", description="The API token for the LLM provider.")
-    prompt: str = Field(..., title="Prompt", description="The prompt to use for the completion.")
-    model: str = Field(..., title="Model", description="The model to use for the completion.")
-    max_tokens: int = Field(256, title="Max Tokens", description="The maximum number of tokens to generate.")
-    temperature: float = Field(..., title="Temperature", description="The temperature to use for the completion.")
-    stop_sequences: List[str] = Field([], title="Stop Sequences", description="The stop sequences to use for the completion.")
 
 
 class QARequest(BaseModel):

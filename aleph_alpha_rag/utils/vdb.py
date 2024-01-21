@@ -12,7 +12,7 @@ from qdrant_client import QdrantClient, models
 from aleph_alpha_rag.utils.configuration import load_config
 
 
-@load_config(location="config/db.yml")
+@load_config(location="config/main.yml")
 def get_db_connection(aleph_alpha_token: str, cfg: DictConfig, collection_name: Optional[str] = None) -> Qdrant:
     """Initializes a connection to the Qdrant DB.
 
@@ -47,7 +47,7 @@ def get_db_connection(aleph_alpha_token: str, cfg: DictConfig, collection_name: 
     return vector_db
 
 
-def generate_collection(qdrant_client, collection_name, embeddings_size):
+def generate_collection(qdrant_client: QdrantClient, collection_name: str, embeddings_size: int):
     """Generate a collection for the Aleph Alpha Backend.
 
     Args:

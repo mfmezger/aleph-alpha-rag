@@ -35,7 +35,7 @@ from aleph_alpha_rag.utils.utility import (
 from aleph_alpha_rag.utils.vdb import generate_collection
 
 # add file logger for loguru
-logger.add("logs/file_{time}.log", backtrace=False, diagnose=False)
+# logger.add("logs/file_{time}.log", backtrace=False, diagnose=False)
 logger.info("Startup.")
 
 
@@ -103,19 +103,18 @@ def embedd_documents_wrapper(
     aa_service.embedd_documents(dir=folder_name, aleph_alpha_token=token, collection_name=collection_name)
 
 
-@app.post("/collection/create/{collection_name}")
-@load_config(location="config/db.yml")
-def create_collection(collection_name: str) -> None:
+@app.post("/collection/create/{collection_name}/{embeddings_size}")
+def create_collection(collection_name: str, embeddings_size: int = 5120) -> None:
     """Create a new collection in the vector database.
 
     Args:
-        llm_provider (LLMProvider): Name of the LLM Provider
         collection_name (str): Name of the Collection
+        embeddings_size (int, optional): Size of the Embeddings. Defaults to 5120.
     """
     qdrant_client, _ = initialize_qdrant_client_config()
 
     try:
-        generate_collection(qdrant_client, collection_name=collection_name, embeddings_size=5120)
+        generate_collection(qdrant_client, collection_name=collection_name, embeddings_size=embeddings_size)
     except Exception:
         logger.info(f"FAILURE: Collection {collection_name} already exists or could not created.")
     logger.info(f"SUCCESS: Collection {collection_name} created.")
@@ -231,7 +230,6 @@ def post_question_answer(request: QARequest) -> QAResponse:
         aleph_alpha_key=ALEPH_ALPHA_API_KEY,
         openai_key=OPENAI_API_KEY,
     )
-
 
     aa_service = AlephAlphaService(token=token, collection_name=request.collection_name)
 
@@ -379,9 +377,6 @@ def search_database(request: SearchRequest, aa_service: AlephAlphaService) -> Li
     return documents
 
 
-
-
-
 @app.delete("/embeddings/delete/{collection_name}/{page}/{source}")
 def delete(
     page: int,
@@ -421,7 +416,7 @@ def delete(
     return result
 
 
-@load_config(location="config/db.yml")
+@load_config(location="config/main.yml")
 def initialize_qdrant_client_config(cfg: DictConfig):
     """Initialize the Qdrant Client.
 
@@ -456,9 +451,6 @@ def initialize_aleph_alpha_vector_db() -> None:
             collection_name=cfg.qdrant.collection_name_aa,
             embeddings_size=cfg.aleph_alpha_embeddings.size,
         )
-
-
-
 
 
 initialize_aleph_alpha_vector_db()

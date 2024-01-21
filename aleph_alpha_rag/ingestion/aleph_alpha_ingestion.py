@@ -22,7 +22,7 @@ from aleph_alpha_rag.utils.configuration import load_config
 load_dotenv()
 
 
-@load_config(location="config/db.yml")
+@load_config(location="config/main.yml")
 def setup_tokenizer_client(cfg: DictConfig):
     """Set up the tokenizer and the aleph alpha client.
 
@@ -71,7 +71,7 @@ def count_tokens(text: str):
 splitter = NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)
 
 
-@load_config(location="config/db.yml")
+@load_config(location="config/main.yml")
 def initialize_aleph_alpha_vector_db(cfg: DictConfig) -> None:
     """Initializes the Aleph Alpha vector db.
 
@@ -96,7 +96,7 @@ def initialize_aleph_alpha_vector_db(cfg: DictConfig) -> None:
         logger.info(f"SUCCESS: Collection {collection_name} created.")
 
 
-@load_config(location="config/db.yml")
+@load_config(location="config/main.yml")
 def setup_connection_vector_db(cfg: DictConfig) -> Qdrant:
     """Sets up the connection to the vector db.
 

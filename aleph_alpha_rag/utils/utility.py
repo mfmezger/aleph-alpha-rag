@@ -121,7 +121,7 @@ def get_token(
     return token or aleph_alpha_key  # type: ignore
 
 
-@load_config("config/db.yml")
+@load_config("config/main.yml")
 def load_vec_db_conn(cfg: DictConfig) -> QdrantClient:
     """Load the Vector Database Connection."""
     qdrant_client = QdrantClient(
