@@ -275,7 +275,7 @@ class AlephAlphaService:
             prompt_granularity="sentence",
             normalize=True,
         )
-        client = Client(token=aleph_alpha_token)
+        client = Client(token=self.aleph_alpha_token)
 
         response_explain = client.explain(exp_req, model=self.cfg.aleph_alpha_completion.model)
         explanations = response_explain.explanations[0].items[0].scores
