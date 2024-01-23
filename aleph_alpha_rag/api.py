@@ -14,7 +14,6 @@ from starlette.responses import JSONResponse
 
 from aleph_alpha_rag.backend.aleph_alpha_service import AlephAlphaService
 from aleph_alpha_rag.data_model.request_data_model import (
-    EmbeddTextFilesRequest,
     ExplainQARequest,
     QARequest,
     SearchRequest,
@@ -93,7 +92,7 @@ def create_collection(collection_name: str, embeddings_size: int = 5120) -> None
     logger.info(f"SUCCESS: Collection {collection_name} created.")
 
 
-@app.post("/embeddings/documents")
+@app.post("/embeddings/documents/pdf")
 async def post_embedd_documents(
     files: List[UploadFile] = File(...),
     token: Optional[str] = None,
@@ -130,50 +129,54 @@ async def post_embedd_documents(
     # Embedd the documents with Aleph Alpha
     logger.debug("Embedding Documents with Aleph Alpha.")
     aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=collection_name)
-    aa_service.embedd_documents(dir=tmp_dir)
+    aa_service.embedd_documents(dir=tmp_dir, file_ending="*.pdf")
 
     return EmbeddingResponse(status="success", files=file_names)
 
 
-@app.post("/embeddings/texts/files")
-async def post_embedd_text_files(request: EmbeddTextFilesRequest) -> EmbeddingResponse:
-    """Embeds text files in the database.
+@app.post("/embeddings/documents/txt")
+async def post_embedd_text_files(
+    files: List[UploadFile] = File(...), token: Optional[str] = None, collection_name: Optional[str] = None, file_ending: str = "*.txt"
+) -> EmbeddingResponse:
+    """Uploads multiple documents to the backend.
 
     Args:
-        request (EmbeddTextFilesRequest): The request parameters.
+        files (List[UploadFile], optional): Upload files. Defaults to File(...).
+        token (Optional[str], optional): Aleph Alpha Token. Defaults to None.
+        collection_name (Optional[str], optional): Name of the collection. Defaults to None.
+        file_ending (str, optional): _description_. Defaults to "*.txt". Can also be "*.md".
 
     Raises:
-        ValueError: If a file does not have a valid name, if no temporary folder is provided, or if no token or LLM provider is specified.
+        ValueError: If no token is provided.
+        ValueError: If the file ending is not supported.
 
     Returns:
-        JSONResponse: A response indicating that the files were received and saved, along with the names of the files they were saved to.
+        EmbeddingResponse: The response as JSON.
     """
-    logger.info("Embedding Text Files")
+    logger.info("Embedding Multiple Documents")
+    token = get_token(token=token, aleph_alpha_key=ALEPH_ALPHA_API_KEY)
     tmp_dir = create_tmp_folder()
 
     file_names = []
 
-    for file in request.files:
+    for file in files:
         file_name = file.filename
         file_names.append(file_name)
 
-        if file_name is None:
-            raise ValueError("File does not have a valid name.")
-
-        # Save the files to the temporary folder
+        # Save the file to the temporary folder
         if tmp_dir is None or not os.path.exists(tmp_dir):
             raise ValueError("Please provide a temporary folder to save the files.")
+
+        if file_name is None:
+            raise ValueError("Please provide a file to save.")
 
         with open(os.path.join(tmp_dir, file_name), "wb") as f:
             f.write(await file.read())
 
-    token = get_token(
-        token=request.token,
-        aleph_alpha_key=ALEPH_ALPHA_API_KEY,
-    )
-
-    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=request.collection_name)
-    aa_service.embedd_text_files(folder=tmp_dir, aleph_alpha_token=token, seperator=request.seperator)
+    # Embedd the documents with Aleph Alpha
+    logger.debug("Embedding Documents with Aleph Alpha.")
+    aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=collection_name)
+    aa_service.embedd_documents(dir=tmp_dir, file_ending=file_ending)
 
     return EmbeddingResponse(status="success", files=file_names)
 

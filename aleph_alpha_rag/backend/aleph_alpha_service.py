@@ -11,7 +11,11 @@ from dotenv import load_dotenv
 from langchain.docstore.document import Document as LangchainDocument
 from langchain.prompts import ChatPromptTemplate
 from langchain.text_splitter import NLTKTextSplitter
-from langchain_community.document_loaders import DirectoryLoader, PyPDFium2Loader
+from langchain_community.document_loaders import (
+    DirectoryLoader,
+    PyPDFium2Loader,
+    TextLoader,
+)
 from langchain_community.vectorstores import Qdrant
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -99,10 +103,7 @@ class AlephAlphaService:
 
         return str(response.completions[0].completion)
 
-    def embedd_documents(
-        self,
-        dir: str,
-    ) -> None:
+    def embedd_documents(self, dir: str, file_ending: str = "*.pdf") -> None:
         """Embeds the documents in the given directory in the Aleph Alpha database.
 
         This method uses the Directory Loader for PDFs and the PyPDFium2Loader to load the documents.
@@ -117,7 +118,13 @@ class AlephAlphaService:
         """
         vector_db: Qdrant = get_db_connection(collection_name=self.collection_name, aleph_alpha_token=self.aleph_alpha_token)
 
-        loader = DirectoryLoader(dir, glob="*.pdf", loader_cls=PyPDFium2Loader)
+        if file_ending == "*.pdf":
+            loader = DirectoryLoader(dir, glob=file_ending, loader_cls=PyPDFium2Loader)
+        elif file_ending == "*.txt":
+            loader = DirectoryLoader(dir, glob=file_ending, loader_cls=TextLoader)
+        else:
+            raise ValueError("File ending not supported.")
+
         get_tokenizer(self.aleph_alpha_token)
 
         splitter = NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)

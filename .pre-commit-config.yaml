@@ -100,6 +100,7 @@ repos:
     -   id: poetry-check
     -   id: poetry-lock
         args: ["--no-update"]
+        language_version: python3.11
     -   id: poetry-export
         args: ["-f", "requirements.txt", "-o", "requirements.txt"]
 
