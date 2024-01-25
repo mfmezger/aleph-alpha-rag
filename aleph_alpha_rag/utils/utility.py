@@ -1,4 +1,4 @@
-"""This is the utility module."""
+"""Utlity Methods."""
 import os
 import uuid
 from pathlib import Path
@@ -8,8 +8,7 @@ from lingua import Language, LanguageDetectorBuilder
 from loguru import logger
 from omegaconf import DictConfig
 from qdrant_client import QdrantClient
-
-from aleph_alpha_rag.utils.configuration import load_config
+from ultra_simple_config import load_config
 
 # add new languages to detect here
 languages = [Language.ENGLISH, Language.GERMAN]
@@ -17,15 +16,18 @@ detector = LanguageDetectorBuilder.from_languages(*languages).with_minimum_relat
 
 
 def combine_text_from_list(input_list: list) -> str:
-    """Combines all strings in a list to one string.
+    """Combines of all strings in a list to one string.
 
     Args:
+    ----
         input_list (list): List of strings
 
     Raises:
+    ------
         TypeError: Input list must contain only strings
 
     Returns:
+    -------
         str: Combined string
     """
     # iterate through list and combine all strings to one
@@ -40,7 +42,8 @@ def combine_text_from_list(input_list: list) -> str:
             combined_text += "\n".join(text)
 
         else:
-            raise TypeError("Input list must contain only strings")
+            msg = "Input list must contain only strings"
+            raise TypeError(msg)
 
     return combined_text
 
@@ -49,15 +52,18 @@ def generate_prompt(prompt_name: str, text: str, query: str = "", language: str 
     """Generates a prompt for the Luminous API using a Jinja template.
 
     Args:
+    ----
         prompt_name (str): The name of the file containing the Jinja template.
         text (str): The text to be inserted into the template.
         query (str): The query to be inserted into the template.
         language (str): The language the query should output. Or it can be detected
 
     Returns:
+    -------
         str: The generated prompt.
 
     Raises:
+    ------
         FileNotFoundError: If the specified prompt file cannot be found.
     """
     try:
@@ -72,12 +78,14 @@ def generate_prompt(prompt_name: str, text: str, query: str = "", language: str 
                 language = "en"
 
         if language not in {"en", "de"}:
-            raise ValueError("Language not supported.")
+            msg = "Language not supported."
+            raise ValueError(msg)
 
-        with open(os.path.join("prompts", language, prompt_name), encoding="utf-8") as f:
+        with Path.open(Path("prompts" / language, prompt_name), encoding="utf-8") as f:
             prompt = PromptTemplate.from_template(f.read(), template_format="jinja2")
     except FileNotFoundError:
-        raise FileNotFoundError(f"Prompt file '{prompt_name}' not found.")
+        msg = f"Prompt file '{prompt_name}' not found."
+        raise FileNotFoundError(msg)
 
     return prompt.format(text=text, query=query) if query else prompt.format(text=text)
 
@@ -85,7 +93,8 @@ def generate_prompt(prompt_name: str, text: str, query: str = "", language: str 
 def create_tmp_folder() -> str:
     """Creates a temporary folder for files to store.
 
-    Returns:
+    Returns
+    -------
         str: The directory name.
     """
     # Create a temporary folder to save the files
@@ -106,13 +115,16 @@ def get_token(
     """Get the token from the environment variables or the parameter.
 
     Args:
+    ----
         token (str, optional): Token from the REST service.
         aleph_alpha_key (str, optional): Token from the LLM Provider.
 
     Returns:
+    -------
         str: Token for the LLM Provider of choice.
 
     Raises:
+    ------
         ValueError: If no token is provided.
     """
     if aleph_alpha_key == "string":
@@ -122,7 +134,8 @@ def get_token(
         token = None
 
     if not aleph_alpha_key and not token:
-        raise ValueError("No token provided.")
+        msg = "No token provided."
+        raise ValueError(msg)
 
     return token or aleph_alpha_key  # type: ignore
 
@@ -130,13 +143,12 @@ def get_token(
 @load_config("config/main.yml")
 def load_vec_db_conn(cfg: DictConfig) -> QdrantClient:
     """Load the Vector Database Connection."""
-    qdrant_client = QdrantClient(
+    return QdrantClient(
         cfg.qdrant.url,
         port=cfg.qdrant.port,
         api_key=os.getenv("QDRANT_API_KEY"),
         prefer_grpc=cfg.qdrant.prefer_grpc,
     )
-    return qdrant_client
 
 
 if __name__ == "__main__":

@@ -3,7 +3,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import List
 
 from aleph_alpha_client import Client
 from dotenv import load_dotenv
@@ -16,20 +15,24 @@ from omegaconf import DictConfig
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from tqdm import tqdm
-
-from aleph_alpha_rag.utils.configuration import load_config
+from ultra_simple_config import load_config
 
 load_dotenv()
 
+aleph_alpha_token = os.getenv("ALEPH_ALPHA_API_KEY")
+collection_name = "asdf"
+
 
 @load_config(location="config/main.yml")
-def setup_tokenizer_client(cfg: DictConfig):
+def setup_tokenizer_client(cfg: DictConfig) -> tuple(Client, Client.tokenizer):
     """Set up the tokenizer and the aleph alpha client.
 
     Args:
+    ----
         cfg (DictConfig): The config data for the embeddings.
 
     Returns:
+    -------
         client, tokenizer: the aleph alpha client and the tokenizer
     """
     client = Client(token=aleph_alpha_token)
@@ -40,27 +43,30 @@ def setup_tokenizer_client(cfg: DictConfig):
 client, tokenizer = setup_tokenizer_client()
 
 
-def split_text(text: str):
+def split_text(text: str) -> list:
     """Split the text into chunks.
 
     Args:
+    ----
         text (str): input text.
 
     Returns:
+    -------
         List: List of splits.
     """
     # define the metadata for the document
-    splits = splitter.split_text(text)
-    return splits
+    return splitter.split_text(text)
 
 
-def count_tokens(text: str):
+def count_tokens(text: str) -> int:
     """Count the number of tokens in the text.
 
     Args:
+    ----
         text (str): The text to count the tokens for.
 
     Returns:
+    -------
         int: Number of tokens.
     """
     tokens = tokenizer.encode(text)
@@ -76,6 +82,7 @@ def initialize_aleph_alpha_vector_db(cfg: DictConfig) -> None:
     """Initializes the Aleph Alpha vector db.
 
     Args:
+    ----
         cfg (DictConfig): Configuration from the file
     """
     qdrant_client = QdrantClient(
@@ -101,9 +108,11 @@ def setup_connection_vector_db(cfg: DictConfig) -> Qdrant:
     """Sets up the connection to the vector db.
 
     Args:
+    ----
         cfg (DictConfig): Configuration from the file
 
     Returns:
+    -------
         Qdrant: The vector db
     """
     embedding = AlephAlphaAsymmetricSemanticEmbedding(
@@ -131,6 +140,7 @@ def parse_txts(text: str, file_name: str, seperator: str, vector_db: Qdrant) -> 
     Text should be marked with a link then </LINK> and then the text.
 
     Args:
+    ----
         text (str): The text to parse
         file_name (str): Name of the file
         seperator (str): The seperator to split the text at
@@ -141,7 +151,7 @@ def parse_txts(text: str, file_name: str, seperator: str, vector_db: Qdrant) -> 
     text = text.split("</LINK>")[1]
 
     # split the text at the seperator
-    text_list: List = text.split(seperator)
+    text_list: list = text.split(seperator)
 
     # check if first and last element are empty
     if not text_list[0]:
@@ -149,22 +159,20 @@ def parse_txts(text: str, file_name: str, seperator: str, vector_db: Qdrant) -> 
     if not text_list[-1]:
         text_list.pop(-1)
 
-    # meta data is a list of dicts including the "file_name" and the "link"
-    metadata_list: List = []
-    for i in range(len(text_list)):
-        metadata_list.append({"file_name": file_name, "link": link})
+    metadata_list = [{"file_name": file_name, "link": link} for _ in range(len(text_list))]
 
     vector_db.add_texts(texts=text_list, metadatas=metadata_list)
 
 
-def parse_pdf(dir: str, vector_db: Qdrant) -> None:
+def parse_pdf(directory: str, vector_db: Qdrant) -> None:
     """Parse the pdfs and add them to the vector db.
 
     Args:
-        dir (str): The directory to parse
+    ----
+        directory (str): The directoryectory to parse
         vector_db (Qdrant): The vector db
     """
-    loader = DirectoryLoader(dir, glob="*.pdf", loader_cls=PyPDFLoader)
+    loader = DirectoryLoader(directory, glob="*.pdf", loader_cls=PyPDFLoader)
 
     docs = loader.load_and_split(splitter)
 
@@ -177,15 +185,16 @@ def parse_pdf(dir: str, vector_db: Qdrant) -> None:
     logger.info("SUCCESS: Texts added to Qdrant DB.")
 
 
-def parse_json(dir: str, vector_db: Qdrant) -> None:
+def parse_json(directory: str, vector_db: Qdrant) -> None:
     """Parse the json and add them to the vector db.
 
     Args:
-        dir (str): The directory to parse
+    ----
+        directory (str): The directoryectory to parse
         vector_db (Qdrant): The vector db
     """
     # open json file
-    with open(dir) as file:
+    with Path.open(directory) as file:
         json_file = json.load(file)
 
     token_list = []
@@ -209,14 +218,14 @@ def parse_json(dir: str, vector_db: Qdrant) -> None:
             for s in tqdm(splits):
                 # print(f"Number of tokens: {count_tokens(s)}")
                 token_list.append(count_tokens(s))
-                s = re.sub(r"\n", " ", s)
+                se = re.sub(r"\n", " ", s)
                 # add to embedding list
-                text_result_list.append(s)
-                enriched_text_list.append(f"Author: {metadata['author']}, Title: {metadata['title']}, Chapter: {metadata['chapter']} Text: {s}")
+                text_result_list.append(se)
+                enriched_text_list.append(f"Author: {metadata['author']}, Title: {metadata['title']}, Chapter: {metadata['chapter']} Text: {se}")
                 metadata_list.append(
                     {
                         "identifier": identifier,
-                    }
+                    },
                 )
 
         else:
@@ -228,7 +237,7 @@ def parse_json(dir: str, vector_db: Qdrant) -> None:
             metadata_list.append(
                 {
                     "identifier": identifier,
-                }
+                },
             )
 
     # create a json object out of the lists
@@ -243,7 +252,7 @@ def parse_json(dir: str, vector_db: Qdrant) -> None:
         }
 
     # save the dict to a json file but as utf8
-    with open("splits_nltk.json", "w", encoding="utf8") as outfile:
+    with Path.open("splits_nltk.json", "w", encoding="utf8") as outfile:
         json.dump(final_split, outfile, ensure_ascii=False)
 
         # start the embedding
@@ -251,23 +260,19 @@ def parse_json(dir: str, vector_db: Qdrant) -> None:
     vector_db.add_texts(texts=text_result_list, metadatas=metadata_list)
     logger.info("SUCCESS: Texts added to Qdrant DB.")
 
-    print(f"Number of tokens: {sum(token_list)}")
 
-    print(f"Price: {sum(token_list)/1000*0.008}")
-
-
-def main():
+def main() -> None:
     """Main function to run the script."""
     load_dotenv()
     aleph_alpha_token = os.getenv("ALEPH_ALPHA_API_KEY")
     client, tokenizer = setup_tokenizer_client(aleph_alpha_token)
-    splitter = NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)
+    NLTKTextSplitter(length_function=count_tokens, chunk_size=300, chunk_overlap=50)
     initialize_aleph_alpha_vector_db()
     vector_db = setup_connection_vector_db()
 
-    parse_pdf(dir=Path("data/"), vector_db=vector_db)
-    txt_dir = Path("data/txt")
-    for file_name in txt_dir.iterdir():
+    parse_pdf(directory=Path("data/"), vector_db=vector_db)
+    txt_directory = Path("data/txt")
+    for file_name in txt_directory.iterdirectory():
         with file_name.open() as f:
             text = f.read()
             parse_txts(

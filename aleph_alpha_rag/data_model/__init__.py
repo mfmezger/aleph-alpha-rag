@@ -1,0 +1,1 @@
+"""Init of Data Model."""

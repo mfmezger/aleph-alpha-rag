@@ -1,16 +1,17 @@
 """FastAPI Backend for the Aleph Alpha RAG."""
 import os
-from typing import List, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, UploadFile
 from fastapi.openapi.utils import get_openapi
 from langchain.docstore.document import Document as LangchainDocument
 from loguru import logger
 from omegaconf import DictConfig
+from Pathlib import Path
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.models.models import UpdateResult
 from starlette.responses import JSONResponse
+from ultra_simple_config import load_config
 
 from aleph_alpha_rag.backend.aleph_alpha_service import AlephAlphaService
 from aleph_alpha_rag.data_model.request_data_model import (
@@ -24,7 +25,6 @@ from aleph_alpha_rag.data_model.response_data_model import (
     QAResponse,
     SearchResponse,
 )
-from aleph_alpha_rag.utils.configuration import load_config
 from aleph_alpha_rag.utils.utility import (
     combine_text_from_list,
     create_tmp_folder,
@@ -39,9 +39,10 @@ logger.info("Startup.")
 
 
 def my_schema() -> dict:
-    """Used to generate the OpenAPI schema.
+    """Generate the OpenAPI schema.
 
-    Returns:
+    Returns
+    -------
         FastAPI: FastAPI App
     """
     openapi_schema = get_openapi(
@@ -56,7 +57,7 @@ def my_schema() -> dict:
 
 # initialize the Fast API Application.
 app = FastAPI(debug=True)
-app.openapi = my_schema  # type: ignore
+app.openapi = my_schema
 
 load_dotenv()
 
@@ -67,9 +68,10 @@ logger.info("Loading REST API Finished.")
 
 @app.get("/")
 def read_root() -> str:
-    """Returns the welcome message.
+    """Return the welcome message.
 
-    Returns:
+    Returns
+    -------
         str: The welcome message.
     """
     return "Welcome to the Simple Aleph Alpha FastAPI Backend!"
@@ -80,6 +82,7 @@ def create_collection(collection_name: str, embeddings_size: int = 5120) -> None
     """Create a new collection in the vector database.
 
     Args:
+    ----
         collection_name (str): Name of the Collection
         embeddings_size (int, optional): Size of the Embeddings. Defaults to 5120.
     """
@@ -94,16 +97,20 @@ def create_collection(collection_name: str, embeddings_size: int = 5120) -> None
 
 @app.post("/embeddings/documents/pdf")
 async def post_embedd_documents(
-    files: List[UploadFile] = File(...),
-    token: Optional[str] = None,
-    collection_name: Optional[str] = None,
+    files: list[UploadFile],
+    token: str | None = None,
+    collection_name: str | None = None,
 ) -> EmbeddingResponse:
     """Uploads multiple documents to the backend.
 
     Args:
+    ----
         files (List[UploadFile], optional): Uploaded files. Defaults to File(...).
+        token (Optional[str], optional): Aleph Alpha Token. Defaults to None.
+        collection_name (Optional[str], optional): Name of the collection. Defaults to None.
 
     Returns:
+    -------
         JSONResponse: The response as JSON.
     """
     logger.info("Embedding Multiple Documents")
@@ -117,13 +124,15 @@ async def post_embedd_documents(
         file_names.append(file_name)
 
         # Save the file to the temporary folder
-        if tmp_dir is None or not os.path.exists(tmp_dir):
-            raise ValueError("Please provide a temporary folder to save the files.")
+        if tmp_dir is None or not Path.exits(tmp_dir):
+            msg = "Please provide a temporary folder to save the files."
+            raise ValueError(msg)
 
         if file_name is None:
-            raise ValueError("Please provide a file to save.")
+            msg = "Please provide a file to save."
+            raise ValueError(msg)
 
-        with open(os.path.join(tmp_dir, file_name), "wb") as f:
+        with Path.open(Path(tmp_dir / file_name), "wb") as f:
             f.write(await file.read())
 
     # Embedd the documents with Aleph Alpha
@@ -136,21 +145,27 @@ async def post_embedd_documents(
 
 @app.post("/embeddings/documents/txt")
 async def post_embedd_text_files(
-    files: List[UploadFile] = File(...), token: Optional[str] = None, collection_name: Optional[str] = None, file_ending: str = "*.txt"
+    files: list[UploadFile],
+    token: str | None = None,
+    collection_name: str | None = None,
+    file_ending: str = "*.txt",
 ) -> EmbeddingResponse:
     """Uploads multiple documents to the backend.
 
     Args:
+    ----
         files (List[UploadFile], optional): Upload files. Defaults to File(...).
         token (Optional[str], optional): Aleph Alpha Token. Defaults to None.
         collection_name (Optional[str], optional): Name of the collection. Defaults to None.
         file_ending (str, optional): _description_. Defaults to "*.txt". Can also be "*.md".
 
     Raises:
+    ------
         ValueError: If no token is provided.
         ValueError: If the file ending is not supported.
 
     Returns:
+    -------
         EmbeddingResponse: The response as JSON.
     """
     logger.info("Embedding Multiple Documents")
@@ -164,13 +179,15 @@ async def post_embedd_text_files(
         file_names.append(file_name)
 
         # Save the file to the temporary folder
-        if tmp_dir is None or not os.path.exists(tmp_dir):
-            raise ValueError("Please provide a temporary folder to save the files.")
+        if tmp_dir is None or not Path.exists(tmp_dir):
+            msg = "Please provide a temporary folder to save the files."
+            raise ValueError(msg)
 
         if file_name is None:
-            raise ValueError("Please provide a file to save.")
+            msg = "Please provide a file to save."
+            raise ValueError(msg)
 
-        with open(os.path.join(tmp_dir, file_name), "wb") as f:
+        with Path.open(Path(tmp_dir / file_name), "wb") as f:
             f.write(await file.read())
 
     # Embedd the documents with Aleph Alpha
@@ -186,12 +203,15 @@ def post_question_answer(request: QARequest) -> QAResponse:
     """Answer a question based on the documents in the database.
 
     Args:
+    ----
         request (QARequest): The request parameters.
 
     Raises:
+    ------
         ValueError: Error if no query or token is provided.
 
     Returns:
+    -------
         Tuple: Answer, Prompt and Meta Data
     """
     logger.info("Answering Question")
@@ -206,9 +226,9 @@ def post_question_answer(request: QARequest) -> QAResponse:
     # summarize the history
     if request.history:
         # combine the texts
-        text = combine_text_from_list(request.history_list)
+        combine_text_from_list(request.history_list)
         # summarize the text
-        # FIXME: AA is going to remove the summarization function
+        # TODO @marc: AA is going to remove the summarization function
         # summary = summarize_text_aleph_alpha(text=text, token=token)
         # combine the history and the query
         summary = ""
@@ -232,22 +252,27 @@ def post_explain_question_answer(request: ExplainQARequest) -> ExplainQAResponse
     """Answer a question & explains it based on the documents in the database. This only works with Aleph Alpha.
 
     This uses the normal qa but combines it with the explain function.
+
     Args:
+    ----
         query (str, optional): _description_. Defaults to None.
         aa_or_openai (str, optional): _description_. Defaults to "openai".
         token (str, optional): _description_. Defaults to None.
         amount (int, optional): _description_. Defaults to 1.
 
     Raises:
+    ------
         ValueError: Error if no query or token is provided.
 
     Returns:
+    -------
         Tuple: Answer, Prompt and Meta Data
     """
     logger.info("Answering Question and Explaining it.")
     # if the query is not provided, raise an error
     if request.qa.search.query is None:
-        raise ValueError("Please provide a Question.")
+        msg = "Please provide a Question."
+        raise ValueError(msg)
 
     token = get_token(
         token=request.qa.search.token,
@@ -270,16 +295,19 @@ def post_explain_question_answer(request: ExplainQARequest) -> ExplainQAResponse
 
 
 @app.post("/semantic/search")
-def post_search(request: SearchRequest) -> List[SearchResponse]:
+def post_search(request: SearchRequest) -> list[SearchResponse]:
     """Searches for a query in the vector database.
 
     Args:
+    ----
         request (SearchRequest): The search request.
 
     Raises:
+    ------
         ValueError: If the LLM provider is not implemented yet.
 
     Returns:
+    -------
         List[str]: A list of matching documents.
     """
     logger.info("Searching for Documents")
@@ -290,24 +318,24 @@ def post_search(request: SearchRequest) -> List[SearchResponse]:
 
     aa_service = AlephAlphaService(aleph_alpha_token=request.token, collection_name=request.collection_name)
 
-    DOCS = search_database(request=request, aa_service=aa_service)
+    docs = search_database(request=request, aa_service=aa_service)
 
-    if not DOCS:
+    if not docs:
         logger.info("No Documents found.")
         return JSONResponse(content={"message": "No documents found."})
 
-    logger.info(f"Found {len(DOCS)} documents.")
+    logger.info(f"Found {len(docs)} documents.")
 
     response = []
     try:
-        for d in DOCS:
+        for d in docs:
             score = d[1]
             text = d[0].page_content
             page = d[0].metadata["page"]
             source = d[0].metadata["source"]
             response.append(SearchResponse(text=text, page=page, source=source, score=score))
-    except Exception as e:
-        for d in DOCS:
+    except Exception:
+        for d in docs:
             score = d[1]
             text = d[0].page_content
             source = d[0].metadata["source"]
@@ -316,16 +344,20 @@ def post_search(request: SearchRequest) -> List[SearchResponse]:
     return response
 
 
-def search_database(request: SearchRequest, aa_service: AlephAlphaService) -> List[tuple[LangchainDocument, float]]:
+def search_database(request: SearchRequest, aa_service: AlephAlphaService) -> list[tuple[LangchainDocument, float]]:
     """Searches the database for a query.
 
     Args:
+    ----
         request (SearchRequest): The request parameters.
+        aa_service (AlephAlphaService): The Aleph Alpha Service.
 
     Raises:
+    ------
         ValueError: If the LLM provider is not implemented yet.
 
     Returns:
+    -------
         JSON List of Documents consisting of the text, page, source and score.
     """
     logger.info("Searching for Documents")
@@ -350,11 +382,13 @@ def delete(
     """Delete a Vector from the database based on the page and source.
 
     Args:
+    ----
         page (int): The page of the Document
         source (str): The name of the Document
-        llm_provider (LLMProvider, optional): The LLM Provider. Defaults to LLMProvider.OPENAI.
+        collection_name (str): The name of the Collection
 
     Returns:
+    -------
         UpdateResult: The result of the Deletion Operation from the Vector Database.
     """
     logger.info("Deleting Vector from Database")
@@ -372,7 +406,7 @@ def delete(
                     ),
                     models.FieldCondition(key="metadata.source", match=models.MatchValue(value=source)),
                 ],
-            )
+            ),
         ),
     )
 
@@ -381,13 +415,15 @@ def delete(
 
 
 @load_config(location="config/main.yml")
-def initialize_qdrant_client_config(cfg: DictConfig):
+def initialize_qdrant_client_config(cfg: DictConfig) -> tuple[QdrantClient, DictConfig]:
     """Initialize the Qdrant Client.
 
     Args:
+    ----
         cfg (DictConfig): Configuration from the file
 
     Returns:
+    -------
         _type_: Qdrant Client and Configuration.
     """
     qdrant_client = QdrantClient(
@@ -403,6 +439,7 @@ def initialize_aleph_alpha_vector_db() -> None:
     """Initializes the Aleph Alpha vector db.
 
     Args:
+    ----
         cfg (DictConfig): Configuration from the file
     """
     qdrant_client, cfg = initialize_qdrant_client_config()
@@ -423,4 +460,4 @@ initialize_aleph_alpha_vector_db()
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="http://0.0.0.0", port=8001)
