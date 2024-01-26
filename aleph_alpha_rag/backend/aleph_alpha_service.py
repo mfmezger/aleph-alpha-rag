@@ -135,7 +135,9 @@ class AlephAlphaService:
         metadata_list = [doc.metadata for doc in docs]
 
         for m in metadata_list:
-            m["source"] = m["source"].split("/")[-1]
+            # only when there are / in the source
+            if "/" in m["source"]:
+                m["source"] = m["source"].split("/")[-1]
 
         vector_db.add_texts(texts=text_list, metadatas=metadata_list)
 
