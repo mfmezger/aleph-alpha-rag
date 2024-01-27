@@ -8,4 +8,4 @@ WORKDIR frontend
 RUN pip install -r requirements.txt
 
 # CMD ["tail", "-f", "/dev/null"]
-CMD ["poetry", "run", "streamlit", "run", "frontend/gui.py", "--theme.base=dark"]
+CMD ["streamlit", "run", "gui.py", "--theme.base=dark"]

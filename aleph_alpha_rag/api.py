@@ -1,5 +1,6 @@
 """FastAPI Backend for the Aleph Alpha RAG."""
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile
@@ -8,8 +9,8 @@ from langchain.docstore.document import Document as LangchainDocument
 from langchain.pydantic_v1 import ValidationError
 from loguru import logger
 from omegaconf import DictConfig
-from Pathlib import Path
 from qdrant_client import QdrantClient, models
+from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.http.models.models import UpdateResult
 from starlette.responses import JSONResponse
 from ultra_simple_config import load_config
@@ -444,7 +445,8 @@ def initialize_aleph_alpha_vector_db() -> None:
     try:
         qdrant_client.get_collection(collection_name=cfg.qdrant.collection_name_aa)
         logger.info(f"SUCCESS: Collection {cfg.qdrant.collection_name_aa} already exists.")
-    except ConnectionError:
+
+    except UnexpectedResponse:
         generate_collection(
             qdrant_client,
             collection_name=cfg.qdrant.collection_name_aa,
