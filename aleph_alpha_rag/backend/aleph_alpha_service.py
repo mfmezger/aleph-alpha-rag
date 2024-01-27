@@ -180,7 +180,7 @@ class AlephAlphaService:
                 continue
 
             # read the text from the file
-            text = pathlib.Path(pathlib.Path(folder / file)).read_text()
+            text = pathlib.Path(pathlib.Path(folder) / file).read_text()
             text_list: list = text.split(seperator)
 
             # check if first and last element are empty

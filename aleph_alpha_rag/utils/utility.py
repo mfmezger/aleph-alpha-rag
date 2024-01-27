@@ -81,7 +81,7 @@ def generate_prompt(prompt_name: str, text: str, query: str = "", language: str 
             msg = "Language not supported."
             raise ValueError(msg)
 
-        with Path.open(Path("prompts" / language, prompt_name), encoding="utf-8") as f:
+        with Path.open(Path("prompts") / language / prompt_name, encoding="utf-8") as f:
             prompt = PromptTemplate.from_template(f.read(), template_format="jinja2")
     except FileNotFoundError as e:
         msg = f"Prompt file '{prompt_name}' not found."

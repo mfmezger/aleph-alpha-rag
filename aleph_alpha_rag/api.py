@@ -6,7 +6,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile
 from fastapi.openapi.utils import get_openapi
 from langchain.docstore.document import Document as LangchainDocument
-from langchain.pydantic_v1 import ValidationError
 from loguru import logger
 from omegaconf import DictConfig
 from qdrant_client import QdrantClient, models
@@ -126,7 +125,7 @@ async def post_embedd_documents(
         file_names.append(file_name)
 
         # Save the file to the temporary folder
-        if tmp_dir is None or not Path.exits(tmp_dir):
+        if tmp_dir is None or not Path(tmp_dir).exists():
             msg = "Please provide a temporary folder to save the files."
             raise ValueError(msg)
 
@@ -134,13 +133,13 @@ async def post_embedd_documents(
             msg = "Please provide a file to save."
             raise ValueError(msg)
 
-        with Path.open(Path(tmp_dir / file_name), "wb") as f:
+        with Path.open(Path(tmp_dir) / file_name, "wb") as f:
             f.write(await file.read())
 
     # Embedd the documents with Aleph Alpha
     logger.debug("Embedding Documents with Aleph Alpha.")
     aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=collection_name)
-    aa_service.embedd_documents(dir=tmp_dir, file_ending="*.pdf")
+    aa_service.embedd_documents(directory=tmp_dir, file_ending="*.pdf")
 
     return EmbeddingResponse(status="success", files=file_names)
 
@@ -181,7 +180,7 @@ async def post_embedd_text_files(
         file_names.append(file_name)
 
         # Save the file to the temporary folder
-        if tmp_dir is None or not Path.exists(tmp_dir):
+        if tmp_dir is None or not Path(tmp_dir).exists():
             msg = "Please provide a temporary folder to save the files."
             raise ValueError(msg)
 
@@ -189,13 +188,13 @@ async def post_embedd_text_files(
             msg = "Please provide a file to save."
             raise ValueError(msg)
 
-        with Path.open(Path(tmp_dir / file_name), "wb") as f:
+        with Path.open(Path(tmp_dir) / file_name, "wb") as f:
             f.write(await file.read())
 
     # Embedd the documents with Aleph Alpha
     logger.debug("Embedding Documents with Aleph Alpha.")
     aa_service = AlephAlphaService(aleph_alpha_token=token, collection_name=collection_name)
-    aa_service.embedd_documents(dir=tmp_dir, file_ending=file_ending)
+    aa_service.embedd_documents(directory=tmp_dir, file_ending=file_ending)
 
     return EmbeddingResponse(status="success", files=file_names)
 
@@ -333,7 +332,7 @@ def post_search(request: SearchRequest) -> list[SearchResponse]:
             page = d[0].metadata["page"]
             source = d[0].metadata["source"]
             response.append(SearchResponse(text=text, page=page, source=source, score=score))
-    except ValidationError:
+    except KeyError:
         for d in docs:
             score = d[1]
             text = d[0].page_content
