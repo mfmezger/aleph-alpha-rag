@@ -1,26 +1,27 @@
 """The script to initialize the Qdrant db backend with aleph alpha."""
 
 import os
-from typing import Optional
 
 from langchain_community.embeddings import AlephAlphaAsymmetricSemanticEmbedding
 from langchain_community.vectorstores import Qdrant
 from loguru import logger
 from omegaconf import DictConfig
 from qdrant_client import QdrantClient, models
-
-from aleph_alpha_rag.utils.configuration import load_config
+from ultra_simple_config import load_config
 
 
 @load_config(location="config/main.yml")
-def get_db_connection(aleph_alpha_token: str, cfg: DictConfig, collection_name: Optional[str] = None) -> Qdrant:
+def get_db_connection(aleph_alpha_token: str, cfg: DictConfig, collection_name: str | None = None) -> Qdrant:
     """Initializes a connection to the Qdrant DB.
 
     Args:
+    ----
         cfg (DictConfig): The configuration file loaded via OmegaConf.
         aleph_alpha_token (str): The Aleph Alpha API token.
+        collection_name (str, optional): The name of the collection. Defaults to None.
 
     Returns:
+    -------
         Qdrant: The Qdrant DB connection.
     """
     embedding = AlephAlphaAsymmetricSemanticEmbedding(
@@ -47,10 +48,11 @@ def get_db_connection(aleph_alpha_token: str, cfg: DictConfig, collection_name: 
     return vector_db
 
 
-def generate_collection(qdrant_client: QdrantClient, collection_name: str, embeddings_size: int):
+def generate_collection(qdrant_client: QdrantClient, collection_name: str, embeddings_size: int) -> None:
     """Generate a collection for the Aleph Alpha Backend.
 
     Args:
+    ----
         qdrant_client (_type_): _description_
         collection_name (_type_): _description_
         embeddings_size (_type_): _description_

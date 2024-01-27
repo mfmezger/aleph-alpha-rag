@@ -9,33 +9,33 @@ from utility import (
 )
 
 
-def test_combine_text_from_list():
+def test_combine_text_from_list() -> None:
     """Test the combine_text_from_list function."""
     assert combine_text_from_list(["Hello", "World"]) == "Hello\nWorld"
     with pytest.raises(TypeError):
         combine_text_from_list(["Hello", 123])
 
 
-def test_generate_prompt():
+def test_generate_prompt() -> None:
     """Test the generate_prompt function."""
     assert generate_prompt("qa.j2", "This is a test text.", "What is the meaning of life?", "en")
     with pytest.raises(FileNotFoundError):
         generate_prompt("non_existent.j2", "This is a test text.", "What is the meaning of life?", "en")
 
 
-def test_create_tmp_folder():
+def test_create_tmp_folder() -> None:
     """Test the create_tmp_folder function."""
     assert "/tmp_" in create_tmp_folder()
 
 
-def test_get_token():
+def test_get_token() -> None:
     """Test the get_token function."""
     assert get_token("token", None) == "token"
     assert get_token(None, "aleph_alpha_key") == "aleph_alpha_key"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="No token provided."):
         get_token(None, None)
 
 
-def test_load_vec_db_conn():
+def test_load_vec_db_conn() -> None:
     """Test the load_vec_db_conn function."""
     assert load_vec_db_conn()

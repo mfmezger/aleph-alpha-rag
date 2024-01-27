@@ -8,7 +8,8 @@ services:
       - ./aleph_alpha_rag:/aleph_alpha_rag
       - ./config:/config
       - ./prompts:/prompts
-      - ./.env:/.env
+    env_file:
+      - .env
     depends_on:
       - qdrant
       - streamlit_app
