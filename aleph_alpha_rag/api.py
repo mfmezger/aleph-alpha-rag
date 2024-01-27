@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile
 from fastapi.openapi.utils import get_openapi
 from langchain.docstore.document import Document as LangchainDocument
+from langchain.pydantic_v1 import ValidationError
 from loguru import logger
 from omegaconf import DictConfig
 from Pathlib import Path
@@ -90,7 +91,7 @@ def create_collection(collection_name: str, embeddings_size: int = 5120) -> None
 
     try:
         generate_collection(qdrant_client, collection_name=collection_name, embeddings_size=embeddings_size)
-    except Exception:
+    except ValueError:
         logger.info(f"FAILURE: Collection {collection_name} already exists or could not created.")
     logger.info(f"SUCCESS: Collection {collection_name} created.")
 
@@ -255,10 +256,7 @@ def post_explain_question_answer(request: ExplainQARequest) -> ExplainQAResponse
 
     Args:
     ----
-        query (str, optional): _description_. Defaults to None.
-        aa_or_openai (str, optional): _description_. Defaults to "openai".
-        token (str, optional): _description_. Defaults to None.
-        amount (int, optional): _description_. Defaults to 1.
+        request (ExplainQARequest): The Request Parameters
 
     Raises:
     ------
@@ -334,7 +332,7 @@ def post_search(request: SearchRequest) -> list[SearchResponse]:
             page = d[0].metadata["page"]
             source = d[0].metadata["source"]
             response.append(SearchResponse(text=text, page=page, source=source, score=score))
-    except Exception:
+    except ValidationError:
         for d in docs:
             score = d[1]
             text = d[0].page_content
@@ -446,7 +444,7 @@ def initialize_aleph_alpha_vector_db() -> None:
     try:
         qdrant_client.get_collection(collection_name=cfg.qdrant.collection_name_aa)
         logger.info(f"SUCCESS: Collection {cfg.qdrant.collection_name_aa} already exists.")
-    except Exception:
+    except ConnectionError:
         generate_collection(
             qdrant_client,
             collection_name=cfg.qdrant.collection_name_aa,
@@ -460,4 +458,4 @@ initialize_aleph_alpha_vector_db()
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="http://0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

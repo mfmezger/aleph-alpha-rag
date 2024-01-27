@@ -95,7 +95,7 @@ def initialize_aleph_alpha_vector_db(cfg: DictConfig) -> None:
     try:
         qdrant_client.get_collection(collection_name=collection_name)
         logger.info(f"SUCCESS: Collection {collection_name} already exists.")
-    except Exception:
+    except ConnectionError:
         qdrant_client.recreate_collection(
             collection_name=collection_name,
             vectors_config=models.VectorParams(size=5120, distance=models.Distance.COSINE),
@@ -208,12 +208,12 @@ def parse_json(directory: str, vector_db: Qdrant) -> None:
         clean_text = json_file[b]["text"]
 
         # replace all linebreaks from teh text
-
+        max_split_lenght = 400
         clean_text = re.sub(r"\s\s+", " ", clean_text)
 
         split_lenght = count_tokens(clean_text)
         # print(split_lenght)
-        if split_lenght > 400:  # 400
+        if split_lenght > max_split_lenght:  # 400
             splits = split_text(clean_text)
             for s in tqdm(splits):
                 # print(f"Number of tokens: {count_tokens(s)}")

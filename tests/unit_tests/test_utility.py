@@ -32,7 +32,7 @@ def test_get_token() -> None:
     """Test the get_token function."""
     assert get_token("token", None) == "token"
     assert get_token(None, "aleph_alpha_key") == "aleph_alpha_key"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="No token provided."):
         get_token(None, None)
 
 

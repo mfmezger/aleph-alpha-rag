@@ -229,11 +229,11 @@ class AlephAlphaService:
             vector_db: Qdrant = get_db_connection(collection_name=self.collection_name, aleph_alpha_token=self.aleph_alpha_token)
             docs = vector_db.similarity_search_with_score(query=query, k=amount, score_threshold=threshold)
             logger.info("SUCCESS: Documents found.")
-            return docs
-        except Exception as e:
+        except ValueError as e:
             msg = f"Failed to search documents: {e}"
             logger.error(f"ERROR:{msg}: {e}")
             raise ValueError(msg) from e
+        return docs
 
     def qa(
         self,
@@ -259,15 +259,10 @@ class AlephAlphaService:
         if len(documents) == 1:
             text = documents[0][0].page_content
             meta_data = documents[0][0].metadata
-
         else:
             # extract the text from the documents
             texts = [doc[0].page_content for doc in documents]
-            if summarization:
-                text = "".join(self.summarize_text_aleph_alpha(t) for t in texts)
-            else:
-                # combine the texts to one text
-                text = " ".join(texts)
+            text = "".join(self.summarize_text_aleph_alpha(t) for t in texts) if summarization else " ".join(texts)
             meta_data = [doc[0].metadata for doc in documents]
 
         # load the prompt
@@ -316,9 +311,10 @@ class AlephAlphaService:
         response_explain = client.explain(exp_req, model=self.cfg.aleph_alpha_completion.model)
         explanations = response_explain.explanations[0].items[0].scores
 
+        threshold = 0.7
         # if all of the scores are belo 0.7 raise an error
-        if all(item.score < 0.7 for item in explanations):
-            msg = "All scores are below 0.7."
+        if all(item.score < threshold for item in explanations):
+            msg = f"All scores are below {threshold}."
             raise ValueError(msg)
 
         # remove element if the text contains Response: or Instructions:

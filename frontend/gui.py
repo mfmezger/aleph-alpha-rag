@@ -50,13 +50,14 @@ def initialize() -> None:
         headers = {"accept": "application/json"}
 
         with st.spinner("Waiting for response...."):
-            qa = requests.post(url_qa, params=params, headers=headers).json()
+            qa = requests.post(url_qa, timeout=60, params=params, headers=headers).json()
             with st.chat_message(name="ai", avatar="🤖"):
                 st.write(qa["answer"])
 
                 # Search the documents
                 documents = requests.post(
                     url_search,
+                    timeout=60,
                     json={
                         "query": search_query,
                         "llm_backend": "aa",

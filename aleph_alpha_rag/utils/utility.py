@@ -83,9 +83,9 @@ def generate_prompt(prompt_name: str, text: str, query: str = "", language: str 
 
         with Path.open(Path("prompts" / language, prompt_name), encoding="utf-8") as f:
             prompt = PromptTemplate.from_template(f.read(), template_format="jinja2")
-    except FileNotFoundError:
+    except FileNotFoundError as e:
         msg = f"Prompt file '{prompt_name}' not found."
-        raise FileNotFoundError(msg)
+        raise FileNotFoundError(msg) from e
 
     return prompt.format(text=text, query=query) if query else prompt.format(text=text)
 
@@ -102,9 +102,8 @@ def create_tmp_folder() -> str:
     try:
         tmp_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Created new folder {tmp_dir}.")
-    except Exception as e:
+    except OSError as e:
         logger.error(f"Failed to create directory {tmp_dir}. Error: {e}")
-        raise
     return str(tmp_dir)
 
 
@@ -137,7 +136,7 @@ def get_token(
         msg = "No token provided."
         raise ValueError(msg)
 
-    return token or aleph_alpha_key  # type: ignore
+    return token or aleph_alpha_key
 
 
 @load_config("config/main.yml")
