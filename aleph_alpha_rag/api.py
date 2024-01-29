@@ -89,10 +89,7 @@ def create_collection(collection_name: str, embeddings_size: int = 5120) -> None
     """
     qdrant_client, _ = initialize_qdrant_client_config()
 
-    try:
-        generate_collection(qdrant_client, collection_name=collection_name, embeddings_size=embeddings_size)
-    except ValueError:
-        logger.info(f"FAILURE: Collection {collection_name} already exists or could not created.")
+    generate_collection(qdrant_client, collection_name=collection_name, embeddings_size=embeddings_size)
     logger.info(f"SUCCESS: Collection {collection_name} created.")
 
 
